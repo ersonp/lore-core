@@ -446,3 +446,53 @@ make format
 make vet
 make test
 ```
+
+---
+
+## Git Branching (GitHub Flow)
+
+### Branch Structure
+
+```
+main ─────────────────────────────────────────►
+       \                    /
+        └── feature/xyz ───┘
+```
+
+- `main` — Always stable and deployable
+- Feature branches — Short-lived, merged via PR
+
+### Branch Naming
+
+| Prefix | Purpose | Example |
+|--------|---------|---------|
+| `feature/` | New features | `feature/ingest-command` |
+| `fix/` | Bug fixes | `fix/qdrant-connection` |
+| `docs/` | Documentation | `docs/api-reference` |
+| `refactor/` | Code refactoring | `refactor/extraction-service` |
+| `chore/` | Maintenance tasks | `chore/update-dependencies` |
+
+### Rules
+
+1. Never commit directly to `main`
+2. Create branch from `main` for each task
+3. Keep branches short-lived (merge within days, not weeks)
+4. Delete branch after merge
+5. One task = one branch = one PR
+
+### Workflow
+
+```bash
+# Start new work
+git checkout main
+git pull
+git checkout -b feature/my-feature
+
+# Do work, commit often
+git add .
+git commit -m "feat(scope): description"
+
+# Push and create PR
+git push -u origin feature/my-feature
+# Create PR on GitHub, merge, delete branch
+```
