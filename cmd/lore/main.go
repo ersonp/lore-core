@@ -50,6 +50,7 @@ func run(ctx context.Context) error {
 		newDeleteCmd(),
 		newExportCmd(),
 		newWatchCmd(),
+		newWorldsCmd(),
 	)
 
 	return rootCmd.ExecuteContext(ctx)
