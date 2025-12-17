@@ -44,6 +44,7 @@ func run(ctx context.Context) error {
 		newListCmd(),
 		newDeleteCmd(),
 		newExportCmd(),
+		newWatchCmd(),
 	)
 
 	return rootCmd.ExecuteContext(ctx)
