@@ -13,6 +13,18 @@ import (
 	"github.com/ersonp/lore-core/internal/domain/ports"
 )
 
+// ExtractionOptions controls extraction behavior.
+type ExtractionOptions struct {
+	CheckConsistency bool // Check for contradictions with existing facts
+	CheckOnly        bool // Only check, don't save facts
+}
+
+// ExtractionResult contains the result of extraction.
+type ExtractionResult struct {
+	Facts  []entities.Fact
+	Issues []ports.ConsistencyIssue
+}
+
 const (
 	// DefaultChunkSize is the default size for text chunks.
 	DefaultChunkSize = 2000
@@ -38,6 +50,15 @@ func NewExtractionService(llm ports.LLMClient, embedder ports.Embedder, vectorDB
 
 // ExtractAndStore extracts facts from text, generates embeddings, and stores them.
 func (s *ExtractionService) ExtractAndStore(ctx context.Context, text string, sourceFile string) ([]entities.Fact, error) {
+	result, err := s.ExtractAndStoreWithOptions(ctx, text, sourceFile, ExtractionOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return result.Facts, nil
+}
+
+// ExtractAndStoreWithOptions extracts facts with consistency checking options.
+func (s *ExtractionService) ExtractAndStoreWithOptions(ctx context.Context, text string, sourceFile string, opts ExtractionOptions) (*ExtractionResult, error) {
 	chunks := ChunkText(text, DefaultChunkSize, DefaultChunkOverlap)
 
 	var allFacts []entities.Fact
@@ -58,7 +79,7 @@ func (s *ExtractionService) ExtractAndStore(ctx context.Context, text string, so
 	}
 
 	if len(allFacts) == 0 {
-		return nil, nil
+		return &ExtractionResult{}, nil
 	}
 
 	texts := make([]string, len(allFacts))
@@ -75,11 +96,55 @@ func (s *ExtractionService) ExtractAndStore(ctx context.Context, text string, so
 		allFacts[i].Embedding = embeddings[i]
 	}
 
-	if err := s.vectorDB.SaveBatch(ctx, allFacts); err != nil {
-		return nil, fmt.Errorf("saving facts: %w", err)
+	result := &ExtractionResult{
+		Facts: allFacts,
 	}
 
-	return allFacts, nil
+	// Check consistency if requested
+	if opts.CheckConsistency {
+		issues, err := s.checkConsistency(ctx, allFacts)
+		if err != nil {
+			return nil, fmt.Errorf("checking consistency: %w", err)
+		}
+		result.Issues = issues
+	}
+
+	// Save facts unless check-only mode
+	if !opts.CheckOnly {
+		if err := s.vectorDB.SaveBatch(ctx, allFacts); err != nil {
+			return nil, fmt.Errorf("saving facts: %w", err)
+		}
+	}
+
+	return result, nil
+}
+
+// checkConsistency checks new facts against existing facts for contradictions.
+func (s *ExtractionService) checkConsistency(ctx context.Context, newFacts []entities.Fact) ([]ports.ConsistencyIssue, error) {
+	var allIssues []ports.ConsistencyIssue
+
+	for _, fact := range newFacts {
+		// Search for similar existing facts of the same type
+		similarFacts, err := s.vectorDB.SearchByType(ctx, fact.Embedding, fact.Type, 5)
+		if err != nil {
+			return nil, fmt.Errorf("searching similar facts: %w", err)
+		}
+
+		if len(similarFacts) == 0 {
+			continue
+		}
+
+		// Check consistency with LLM
+		issues, err := s.llm.CheckConsistency(ctx, []entities.Fact{fact}, similarFacts)
+		if err != nil {
+			// Log warning but continue - don't fail the whole operation
+			continue
+		}
+
+		allIssues = append(allIssues, issues...)
+	}
+
+	return allIssues, nil
 }
 
 // ChunkText splits text into chunks with overlap.

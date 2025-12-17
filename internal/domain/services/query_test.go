@@ -88,6 +88,54 @@ func (m *mockVectorDB) Delete(ctx context.Context, id string) error {
 	return m.err
 }
 
+func (m *mockVectorDB) List(ctx context.Context, limit int, offset uint64) ([]entities.Fact, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.facts, nil
+}
+
+func (m *mockVectorDB) ListByType(ctx context.Context, factType entities.FactType, limit int) ([]entities.Fact, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	var filtered []entities.Fact
+	for _, f := range m.facts {
+		if f.Type == factType {
+			filtered = append(filtered, f)
+		}
+	}
+	return filtered, nil
+}
+
+func (m *mockVectorDB) ListBySource(ctx context.Context, sourceFile string, limit int) ([]entities.Fact, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	var filtered []entities.Fact
+	for _, f := range m.facts {
+		if f.SourceFile == sourceFile {
+			filtered = append(filtered, f)
+		}
+	}
+	return filtered, nil
+}
+
+func (m *mockVectorDB) DeleteBySource(ctx context.Context, sourceFile string) error {
+	return m.err
+}
+
+func (m *mockVectorDB) DeleteAll(ctx context.Context) error {
+	return m.err
+}
+
+func (m *mockVectorDB) Count(ctx context.Context) (uint64, error) {
+	if m.err != nil {
+		return 0, m.err
+	}
+	return uint64(len(m.facts)), nil
+}
+
 func TestQueryService_Search(t *testing.T) {
 	facts := []entities.Fact{
 		{
