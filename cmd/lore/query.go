@@ -6,12 +6,17 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ersonp/lore-core/internal/application/handlers"
+	"github.com/ersonp/lore-core/internal/domain/entities"
 	"github.com/ersonp/lore-core/internal/infrastructure/config"
 )
 
 var (
 	queryLimit int
+	queryType  string
 )
+
+var validTypes = []string{"character", "location", "event", "relationship", "rule", "timeline"}
 
 func newQueryCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -23,6 +28,7 @@ func newQueryCmd() *cobra.Command {
 	}
 
 	cmd.Flags().IntVarP(&queryLimit, "limit", "l", 10, "Maximum number of results")
+	cmd.Flags().StringVarP(&queryType, "type", "t", "", "Filter by fact type (character, location, event, relationship, rule, timeline)")
 
 	return cmd
 }
@@ -30,6 +36,10 @@ func newQueryCmd() *cobra.Command {
 func runQuery(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 	query := args[0]
+
+	if queryType != "" && !isValidType(queryType) {
+		return fmt.Errorf("invalid type %q, valid types: %v", queryType, validTypes)
+	}
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -47,7 +57,12 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	}
 	defer repo.Close()
 
-	result, err := queryHandler.Handle(ctx, query, queryLimit)
+	var result *handlers.QueryResult
+	if queryType != "" {
+		result, err = queryHandler.HandleByType(ctx, query, entities.FactType(queryType), queryLimit)
+	} else {
+		result, err = queryHandler.Handle(ctx, query, queryLimit)
+	}
 	if err != nil {
 		return fmt.Errorf("querying facts: %w", err)
 	}
@@ -71,4 +86,13 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func isValidType(t string) bool {
+	for _, valid := range validTypes {
+		if t == valid {
+			return true
+		}
+	}
+	return false
 }
