@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -18,9 +20,16 @@ const (
 
 // Config holds all configuration for lore-core.
 type Config struct {
-	LLM      LLMConfig      `mapstructure:"llm"`
-	Embedder EmbedderConfig `mapstructure:"embedder"`
-	Qdrant   QdrantConfig   `mapstructure:"qdrant"`
+	LLM      LLMConfig              `mapstructure:"llm"`
+	Embedder EmbedderConfig         `mapstructure:"embedder"`
+	Qdrant   QdrantConfig           `mapstructure:"qdrant"`
+	Worlds   map[string]WorldConfig `mapstructure:"worlds"`
+}
+
+// WorldConfig holds configuration for a specific world.
+type WorldConfig struct {
+	Collection  string `mapstructure:"collection"`
+	Description string `mapstructure:"description"`
 }
 
 // LLMConfig holds configuration for the LLM provider.
@@ -57,10 +66,10 @@ func Default() *Config {
 			Model:    "text-embedding-3-small",
 		},
 		Qdrant: QdrantConfig{
-			Host:       "localhost",
-			Port:       6334,
-			Collection: "lore_facts",
+			Host: "localhost",
+			Port: 6334,
 		},
+		Worlds: map[string]WorldConfig{},
 	}
 }
 
@@ -106,7 +115,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("embedder.model", "text-embedding-3-small")
 	v.SetDefault("qdrant.host", "localhost")
 	v.SetDefault("qdrant.port", 6334)
-	v.SetDefault("qdrant.collection", "lore_facts")
 }
 
 // bindEnvVars binds environment variables to config keys.
@@ -141,4 +149,63 @@ func ConfigDir(basePath string) string {
 // ConfigFilePath returns the path to the config file.
 func ConfigFilePath(basePath string) string {
 	return filepath.Join(basePath, DefaultConfigDir, DefaultConfigFile)
+}
+
+// GetWorld returns the configuration for a specific world.
+func (c *Config) GetWorld(name string) (*WorldConfig, error) {
+	if len(c.Worlds) == 0 {
+		return nil, fmt.Errorf("no worlds configured")
+	}
+
+	world, ok := c.Worlds[name]
+	if !ok {
+		available := make([]string, 0, len(c.Worlds))
+		for k := range c.Worlds {
+			available = append(available, k)
+		}
+		return nil, fmt.Errorf("world %q not found (available: %s)", name, strings.Join(available, ", "))
+	}
+
+	return &world, nil
+}
+
+// GetCollectionForWorld returns the Qdrant collection name for a world.
+func (c *Config) GetCollectionForWorld(name string) (string, error) {
+	world, err := c.GetWorld(name)
+	if err != nil {
+		return "", err
+	}
+	return world.Collection, nil
+}
+
+// SanitizeWorldName converts a world name to a valid collection suffix.
+func SanitizeWorldName(name string) string {
+	// Convert to lowercase
+	name = strings.ToLower(name)
+
+	// Replace spaces and hyphens with underscores
+	name = strings.ReplaceAll(name, " ", "_")
+	name = strings.ReplaceAll(name, "-", "_")
+
+	// Remove any characters that aren't alphanumeric or underscore
+	re := regexp.MustCompile(`[^a-z0-9_]`)
+	name = re.ReplaceAllString(name, "")
+
+	// Remove consecutive underscores
+	re = regexp.MustCompile(`_+`)
+	name = re.ReplaceAllString(name, "_")
+
+	// Trim leading/trailing underscores
+	name = strings.Trim(name, "_")
+
+	if name == "" {
+		return "default"
+	}
+
+	return name
+}
+
+// GenerateCollectionName creates a collection name for a world.
+func GenerateCollectionName(worldName string) string {
+	return "lore_" + SanitizeWorldName(worldName)
 }
