@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ersonp/lore-core/internal/domain/entities"
+	"github.com/ersonp/lore-core/internal/domain/ports"
 	"github.com/ersonp/lore-core/internal/domain/services"
 )
 
@@ -23,23 +24,36 @@ func NewIngestHandler(extractionService *services.ExtractionService) *IngestHand
 	}
 }
 
+// IngestOptions controls ingestion behavior.
+type IngestOptions struct {
+	CheckConsistency bool // Check for contradictions with existing facts
+	CheckOnly        bool // Only check, don't save facts
+}
+
 // IngestResult contains the result of ingestion.
 type IngestResult struct {
 	FilePath   string
 	FactsCount int
 	Facts      []entities.Fact
+	Issues     []ports.ConsistencyIssue
 }
 
 // IngestBatchResult contains the result of batch ingestion.
 type IngestBatchResult struct {
 	TotalFiles  int
 	TotalFacts  int
+	TotalIssues int
 	FileResults []*IngestResult
 	Errors      []error
 }
 
 // Handle ingests a file and extracts facts.
 func (h *IngestHandler) Handle(ctx context.Context, filePath string) (*IngestResult, error) {
+	return h.HandleWithOptions(ctx, filePath, IngestOptions{})
+}
+
+// HandleWithOptions ingests a file with consistency checking options.
+func (h *IngestHandler) HandleWithOptions(ctx context.Context, filePath string, opts IngestOptions) (*IngestResult, error) {
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("resolving path: %w", err)
@@ -59,20 +73,31 @@ func (h *IngestHandler) Handle(ctx context.Context, filePath string) (*IngestRes
 		return nil, fmt.Errorf("reading file: %w", err)
 	}
 
-	facts, err := h.extractionService.ExtractAndStore(ctx, string(content), absPath)
+	extractOpts := services.ExtractionOptions{
+		CheckConsistency: opts.CheckConsistency,
+		CheckOnly:        opts.CheckOnly,
+	}
+
+	result, err := h.extractionService.ExtractAndStoreWithOptions(ctx, string(content), absPath, extractOpts)
 	if err != nil {
 		return nil, fmt.Errorf("extracting facts: %w", err)
 	}
 
 	return &IngestResult{
 		FilePath:   absPath,
-		FactsCount: len(facts),
-		Facts:      facts,
+		FactsCount: len(result.Facts),
+		Facts:      result.Facts,
+		Issues:     result.Issues,
 	}, nil
 }
 
 // HandleDirectory ingests all matching files in a directory.
 func (h *IngestHandler) HandleDirectory(ctx context.Context, dirPath string, pattern string, recursive bool, progressFn func(file string)) (*IngestBatchResult, error) {
+	return h.HandleDirectoryWithOptions(ctx, dirPath, pattern, recursive, progressFn, IngestOptions{})
+}
+
+// HandleDirectoryWithOptions ingests all matching files with consistency checking options.
+func (h *IngestHandler) HandleDirectoryWithOptions(ctx context.Context, dirPath string, pattern string, recursive bool, progressFn func(file string), opts IngestOptions) (*IngestBatchResult, error) {
 	absPath, err := filepath.Abs(dirPath)
 	if err != nil {
 		return nil, fmt.Errorf("resolving path: %w", err)
@@ -105,7 +130,7 @@ func (h *IngestHandler) HandleDirectory(ctx context.Context, dirPath string, pat
 			progressFn(file)
 		}
 
-		fileResult, err := h.Handle(ctx, file)
+		fileResult, err := h.HandleWithOptions(ctx, file, opts)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("%s: %w", file, err))
 			continue
@@ -114,6 +139,7 @@ func (h *IngestHandler) HandleDirectory(ctx context.Context, dirPath string, pat
 		result.FileResults = append(result.FileResults, fileResult)
 		result.TotalFiles++
 		result.TotalFacts += fileResult.FactsCount
+		result.TotalIssues += len(fileResult.Issues)
 	}
 
 	return result, nil
