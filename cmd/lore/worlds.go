@@ -63,24 +63,25 @@ func runWorldsList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-var createDescription string
-
 func newWorldsCreateCmd() *cobra.Command {
+	var description string
+
 	cmd := &cobra.Command{
 		Use:   "create NAME",
 		Short: "Create a new world",
 		Args:  cobra.ExactArgs(1),
-		RunE:  runWorldsCreate,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runWorldsCreate(cmd, args[0], description)
+		},
 	}
 
-	cmd.Flags().StringVarP(&createDescription, "description", "d", "", "World description")
+	cmd.Flags().StringVarP(&description, "description", "d", "", "World description")
 
 	return cmd
 }
 
-func runWorldsCreate(cmd *cobra.Command, args []string) error {
+func runWorldsCreate(cmd *cobra.Command, name string, description string) error {
 	ctx := cmd.Context()
-	name := args[0]
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -92,7 +93,7 @@ func runWorldsCreate(cmd *cobra.Command, args []string) error {
 
 	// Check if config exists, if not initialize
 	if !config.Exists(cwd) {
-		if err := config.WriteDefaultWithWorld(cwd, name, createDescription); err != nil {
+		if err := config.WriteDefaultWithWorld(cwd, name, description); err != nil {
 			return fmt.Errorf("initializing config: %w", err)
 		}
 		fmt.Printf("Initialized lore in %s\n", config.ConfigDir(cwd))
@@ -112,7 +113,7 @@ func runWorldsCreate(cmd *cobra.Command, args []string) error {
 
 		newWorld := config.WorldConfig{
 			Collection:  collection,
-			Description: createDescription,
+			Description: description,
 		}
 
 		if err := addWorldToConfig(cwd, name, newWorld); err != nil {
@@ -129,24 +130,25 @@ func runWorldsCreate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-var worldsDeleteForce bool
-
 func newWorldsDeleteCmd() *cobra.Command {
+	var force bool
+
 	cmd := &cobra.Command{
 		Use:   "delete NAME",
 		Short: "Delete a world",
 		Args:  cobra.ExactArgs(1),
-		RunE:  runWorldsDelete,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runWorldsDelete(cmd, args[0], force)
+		},
 	}
 
-	cmd.Flags().BoolVarP(&worldsDeleteForce, "force", "f", false, "Delete even if world contains facts")
+	cmd.Flags().BoolVarP(&force, "force", "f", false, "Delete even if world contains facts")
 
 	return cmd
 }
 
-func runWorldsDelete(cmd *cobra.Command, args []string) error {
+func runWorldsDelete(cmd *cobra.Command, name string, force bool) error {
 	ctx := cmd.Context()
-	name := args[0]
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -163,7 +165,7 @@ func runWorldsDelete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("world %q not found", name)
 	}
 
-	if !worldsDeleteForce {
+	if !force {
 		count, err := getCollectionCount(ctx, cfg, world.Collection)
 		if err == nil && count > 0 {
 			return fmt.Errorf("world %q contains %d facts, use --force to delete", name, count)

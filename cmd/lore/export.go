@@ -13,37 +13,41 @@ import (
 	"github.com/ersonp/lore-core/internal/infrastructure/config"
 )
 
-var (
-	exportFormat string
-	exportOutput string
-	exportType   string
-	exportSource string
-	exportLimit  int
-)
+type exportFlags struct {
+	format   string
+	output   string
+	factType string
+	source   string
+	limit    int
+}
 
 func newExportCmd() *cobra.Command {
+	var flags exportFlags
+
 	cmd := &cobra.Command{
 		Use:   "export",
 		Short: "Export facts to file",
 		Long:  "Exports facts to JSON, CSV, or markdown format.",
-		RunE:  runExport,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runExport(cmd, flags)
+		},
 	}
 
-	cmd.Flags().StringVarP(&exportFormat, "format", "f", "json", "Output format (json, csv, markdown)")
-	cmd.Flags().StringVarP(&exportOutput, "output", "o", "", "Output file (default: stdout)")
-	cmd.Flags().StringVarP(&exportType, "type", "t", "", "Filter by fact type")
-	cmd.Flags().StringVarP(&exportSource, "source", "s", "", "Filter by source file")
-	cmd.Flags().IntVarP(&exportLimit, "limit", "l", 1000, "Maximum number of facts to export")
+	cmd.Flags().StringVarP(&flags.format, "format", "f", "json", "Output format (json, csv, markdown)")
+	cmd.Flags().StringVarP(&flags.output, "output", "o", "", "Output file (default: stdout)")
+	cmd.Flags().StringVarP(&flags.factType, "type", "t", "", "Filter by fact type")
+	cmd.Flags().StringVarP(&flags.source, "source", "s", "", "Filter by source file")
+	cmd.Flags().IntVarP(&flags.limit, "limit", "l", 1000, "Maximum number of facts to export")
 
 	return cmd
 }
 
-func runExport(cmd *cobra.Command, args []string) error {
+func runExport(cmd *cobra.Command, flags exportFlags) error {
 	ctx := cmd.Context()
 
 	validFormats := []string{"json", "csv", "markdown"}
-	if !contains(validFormats, exportFormat) {
-		return fmt.Errorf("invalid format %q, valid formats: %v", exportFormat, validFormats)
+	if !contains(validFormats, flags.format) {
+		return fmt.Errorf("invalid format %q, valid formats: %v", flags.format, validFormats)
 	}
 
 	cwd, err := os.Getwd()
@@ -65,15 +69,15 @@ func runExport(cmd *cobra.Command, args []string) error {
 	var facts []entities.Fact
 
 	switch {
-	case exportType != "":
-		if !isValidType(exportType) {
-			return fmt.Errorf("invalid type %q, valid types: %v", exportType, validTypes)
+	case flags.factType != "":
+		if !isValidType(flags.factType) {
+			return fmt.Errorf("invalid type %q, valid types: %v", flags.factType, validTypes)
 		}
-		facts, err = repo.ListByType(ctx, entities.FactType(exportType), exportLimit)
-	case exportSource != "":
-		facts, err = repo.ListBySource(ctx, exportSource, exportLimit)
+		facts, err = repo.ListByType(ctx, entities.FactType(flags.factType), flags.limit)
+	case flags.source != "":
+		facts, err = repo.ListBySource(ctx, flags.source, flags.limit)
 	default:
-		facts, err = repo.List(ctx, exportLimit, 0)
+		facts, err = repo.List(ctx, flags.limit, 0)
 	}
 
 	if err != nil {
@@ -85,7 +89,7 @@ func runExport(cmd *cobra.Command, args []string) error {
 	}
 
 	var output string
-	switch exportFormat {
+	switch flags.format {
 	case "json":
 		output, err = formatJSON(facts)
 	case "csv":
@@ -98,11 +102,11 @@ func runExport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("formatting output: %w", err)
 	}
 
-	if exportOutput != "" {
-		if err := os.WriteFile(exportOutput, []byte(output), 0644); err != nil {
+	if flags.output != "" {
+		if err := os.WriteFile(flags.output, []byte(output), 0644); err != nil {
 			return fmt.Errorf("writing file: %w", err)
 		}
-		fmt.Printf("Exported %d facts to %s\n", len(facts), exportOutput)
+		fmt.Printf("Exported %d facts to %s\n", len(facts), flags.output)
 	} else {
 		fmt.Print(output)
 	}

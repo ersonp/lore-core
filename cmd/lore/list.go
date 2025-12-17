@@ -10,28 +10,30 @@ import (
 	"github.com/ersonp/lore-core/internal/infrastructure/config"
 )
 
-var (
-	listLimit  int
-	listType   string
-	listSource string
-)
-
 func newListCmd() *cobra.Command {
+	var (
+		limit    int
+		factType string
+		source   string
+	)
+
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all facts",
 		Long:  "Lists all facts stored in the database with optional filtering.",
-		RunE:  runList,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runList(cmd, limit, factType, source)
+		},
 	}
 
-	cmd.Flags().IntVarP(&listLimit, "limit", "l", 50, "Maximum number of facts to display")
-	cmd.Flags().StringVarP(&listType, "type", "t", "", "Filter by fact type")
-	cmd.Flags().StringVarP(&listSource, "source", "s", "", "Filter by source file")
+	cmd.Flags().IntVarP(&limit, "limit", "l", 50, "Maximum number of facts to display")
+	cmd.Flags().StringVarP(&factType, "type", "t", "", "Filter by fact type")
+	cmd.Flags().StringVarP(&source, "source", "s", "", "Filter by source file")
 
 	return cmd
 }
 
-func runList(cmd *cobra.Command, args []string) error {
+func runList(cmd *cobra.Command, limit int, factType string, source string) error {
 	ctx := cmd.Context()
 
 	cwd, err := os.Getwd()
@@ -53,15 +55,15 @@ func runList(cmd *cobra.Command, args []string) error {
 	var facts []entities.Fact
 
 	switch {
-	case listType != "":
-		if !isValidType(listType) {
-			return fmt.Errorf("invalid type %q, valid types: %v", listType, validTypes)
+	case factType != "":
+		if !isValidType(factType) {
+			return fmt.Errorf("invalid type %q, valid types: %v", factType, validTypes)
 		}
-		facts, err = repo.ListByType(ctx, entities.FactType(listType), listLimit)
-	case listSource != "":
-		facts, err = repo.ListBySource(ctx, listSource, listLimit)
+		facts, err = repo.ListByType(ctx, entities.FactType(factType), limit)
+	case source != "":
+		facts, err = repo.ListBySource(ctx, source, limit)
 	default:
-		facts, err = repo.List(ctx, listLimit, 0)
+		facts, err = repo.List(ctx, limit, 0)
 	}
 
 	if err != nil {

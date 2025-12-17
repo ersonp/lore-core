@@ -11,34 +11,35 @@ import (
 	"github.com/ersonp/lore-core/internal/infrastructure/config"
 )
 
-var (
-	queryLimit int
-	queryType  string
-)
-
 var validTypes = []string{"character", "location", "event", "relationship", "rule", "timeline"}
 
 func newQueryCmd() *cobra.Command {
+	var (
+		limit    int
+		factType string
+	)
+
 	cmd := &cobra.Command{
 		Use:   "query <question>",
 		Short: "Search for facts",
 		Long:  "Performs semantic search to find facts matching your question.",
 		Args:  cobra.ExactArgs(1),
-		RunE:  runQuery,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runQuery(cmd, args[0], limit, factType)
+		},
 	}
 
-	cmd.Flags().IntVarP(&queryLimit, "limit", "l", 10, "Maximum number of results")
-	cmd.Flags().StringVarP(&queryType, "type", "t", "", "Filter by fact type (character, location, event, relationship, rule, timeline)")
+	cmd.Flags().IntVarP(&limit, "limit", "l", 10, "Maximum number of results")
+	cmd.Flags().StringVarP(&factType, "type", "t", "", "Filter by fact type (character, location, event, relationship, rule, timeline)")
 
 	return cmd
 }
 
-func runQuery(cmd *cobra.Command, args []string) error {
+func runQuery(cmd *cobra.Command, query string, limit int, factType string) error {
 	ctx := cmd.Context()
-	query := args[0]
 
-	if queryType != "" && !isValidType(queryType) {
-		return fmt.Errorf("invalid type %q, valid types: %v", queryType, validTypes)
+	if factType != "" && !isValidType(factType) {
+		return fmt.Errorf("invalid type %q, valid types: %v", factType, validTypes)
 	}
 
 	cwd, err := os.Getwd()
@@ -58,10 +59,10 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	defer repo.Close()
 
 	var result *handlers.QueryResult
-	if queryType != "" {
-		result, err = queryHandler.HandleByType(ctx, query, entities.FactType(queryType), queryLimit)
+	if factType != "" {
+		result, err = queryHandler.HandleByType(ctx, query, entities.FactType(factType), limit)
 	} else {
-		result, err = queryHandler.Handle(ctx, query, queryLimit)
+		result, err = queryHandler.Handle(ctx, query, limit)
 	}
 	if err != nil {
 		return fmt.Errorf("querying facts: %w", err)

@@ -18,21 +18,25 @@ import (
 	"github.com/ersonp/lore-core/internal/infrastructure/vectordb/qdrant"
 )
 
-var (
-	watchSource   string
-	watchAutoSave bool
-)
+type watchFlags struct {
+	source   string
+	autoSave bool
+}
 
 func newWatchCmd() *cobra.Command {
+	var flags watchFlags
+
 	cmd := &cobra.Command{
 		Use:   "watch",
 		Short: "Interactive mode with real-time consistency checking",
 		Long:  "Enter text interactively and get real-time fact extraction and consistency feedback.",
-		RunE:  runWatch,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runWatch(cmd, flags)
+		},
 	}
 
-	cmd.Flags().StringVarP(&watchSource, "source", "s", "interactive", "Source name for facts")
-	cmd.Flags().BoolVar(&watchAutoSave, "save", false, "Auto-save facts (with confirmation on conflicts)")
+	cmd.Flags().StringVarP(&flags.source, "source", "s", "interactive", "Source name for facts")
+	cmd.Flags().BoolVar(&flags.autoSave, "save", false, "Auto-save facts (with confirmation on conflicts)")
 
 	return cmd
 }
@@ -42,9 +46,11 @@ type watchState struct {
 	pendingIssues     []ports.ConsistencyIssue
 	extractionService *services.ExtractionService
 	vectorDB          ports.VectorDB
+	source            string
+	autoSave          bool
 }
 
-func runWatch(cmd *cobra.Command, args []string) error {
+func runWatch(cmd *cobra.Command, flags watchFlags) error {
 	ctx := cmd.Context()
 
 	cwd, err := os.Getwd()
@@ -91,6 +97,8 @@ func runWatch(cmd *cobra.Command, args []string) error {
 	state := &watchState{
 		extractionService: extractionSvc,
 		vectorDB:          repo,
+		source:            flags.source,
+		autoSave:          flags.autoSave,
 	}
 
 	fmt.Println("Lore interactive mode. Enter text and press Enter twice to check.")
@@ -187,7 +195,7 @@ func (s *watchState) processInput(ctx context.Context, text string) error {
 		CheckOnly:        true, // Don't save yet
 	}
 
-	result, err := s.extractionService.ExtractAndStoreWithOptions(ctx, text, watchSource, opts)
+	result, err := s.extractionService.ExtractAndStoreWithOptions(ctx, text, s.source, opts)
 	if err != nil {
 		return fmt.Errorf("extracting facts: %w", err)
 	}
@@ -220,7 +228,7 @@ func (s *watchState) processInput(ctx context.Context, text string) error {
 	fmt.Printf("\nFacts queued (%d total pending). Use 'save' to save or 'discard' to clear.\n", len(s.pendingFacts))
 
 	// Auto-save if enabled and no critical issues
-	if watchAutoSave && !hasCriticalIssues(result.Issues) {
+	if s.autoSave && !hasCriticalIssues(result.Issues) {
 		return s.savePendingFacts(ctx)
 	}
 

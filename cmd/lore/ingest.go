@@ -12,33 +12,36 @@ import (
 	"github.com/ersonp/lore-core/internal/infrastructure/config"
 )
 
-var (
-	ingestRecursive bool
-	ingestPattern   string
-	ingestCheck     bool
-	ingestCheckOnly bool
-)
+type ingestFlags struct {
+	recursive bool
+	pattern   string
+	check     bool
+	checkOnly bool
+}
 
 func newIngestCmd() *cobra.Command {
+	var flags ingestFlags
+
 	cmd := &cobra.Command{
 		Use:   "ingest <path>",
 		Short: "Extract facts from a file or directory",
 		Long:  "Reads text files, extracts facts using LLM, generates embeddings, and stores them in Qdrant.",
 		Args:  cobra.ExactArgs(1),
-		RunE:  runIngest,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runIngest(cmd, args[0], flags)
+		},
 	}
 
-	cmd.Flags().BoolVarP(&ingestRecursive, "recursive", "r", false, "Process subdirectories recursively")
-	cmd.Flags().StringVarP(&ingestPattern, "pattern", "p", "*.txt", "File pattern to match (default: *.txt)")
-	cmd.Flags().BoolVarP(&ingestCheck, "check", "c", false, "Check for consistency with existing facts")
-	cmd.Flags().BoolVar(&ingestCheckOnly, "check-only", false, "Check consistency without saving (dry run)")
+	cmd.Flags().BoolVarP(&flags.recursive, "recursive", "r", false, "Process subdirectories recursively")
+	cmd.Flags().StringVarP(&flags.pattern, "pattern", "p", "*.txt", "File pattern to match (default: *.txt)")
+	cmd.Flags().BoolVarP(&flags.check, "check", "c", false, "Check for consistency with existing facts")
+	cmd.Flags().BoolVar(&flags.checkOnly, "check-only", false, "Check consistency without saving (dry run)")
 
 	return cmd
 }
 
-func runIngest(cmd *cobra.Command, args []string) error {
+func runIngest(cmd *cobra.Command, path string, flags ingestFlags) error {
 	ctx := cmd.Context()
-	path := args[0]
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -57,12 +60,12 @@ func runIngest(cmd *cobra.Command, args []string) error {
 	defer repo.Close()
 
 	opts := handlers.IngestOptions{
-		CheckConsistency: ingestCheck || ingestCheckOnly,
-		CheckOnly:        ingestCheckOnly,
+		CheckConsistency: flags.check || flags.checkOnly,
+		CheckOnly:        flags.checkOnly,
 	}
 
 	if handlers.IsDirectory(path) {
-		return runIngestDirectory(ctx, ingestHandler, path, opts)
+		return runIngestDirectory(ctx, ingestHandler, path, flags.pattern, flags.recursive, opts)
 	}
 
 	return runIngestFile(ctx, ingestHandler, path, opts)
@@ -98,14 +101,14 @@ func runIngestFile(ctx context.Context, handler *handlers.IngestHandler, filePat
 	return nil
 }
 
-func runIngestDirectory(ctx context.Context, handler *handlers.IngestHandler, dirPath string, opts handlers.IngestOptions) error {
-	fmt.Printf("Ingesting directory %s (pattern: %s, recursive: %v)...\n", dirPath, ingestPattern, ingestRecursive)
+func runIngestDirectory(ctx context.Context, handler *handlers.IngestHandler, dirPath string, pattern string, recursive bool, opts handlers.IngestOptions) error {
+	fmt.Printf("Ingesting directory %s (pattern: %s, recursive: %v)...\n", dirPath, pattern, recursive)
 
 	progressFn := func(file string) {
 		fmt.Printf("  Processing: %s\n", file)
 	}
 
-	result, err := handler.HandleDirectoryWithOptions(ctx, dirPath, ingestPattern, ingestRecursive, progressFn, opts)
+	result, err := handler.HandleDirectoryWithOptions(ctx, dirPath, pattern, recursive, progressFn, opts)
 	if err != nil {
 		return fmt.Errorf("ingesting directory: %w", err)
 	}

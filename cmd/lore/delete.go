@@ -11,28 +11,32 @@ import (
 	"github.com/ersonp/lore-core/internal/infrastructure/config"
 )
 
-var (
-	deleteSource string
-	deleteAll    bool
-	deleteForce  bool
-)
+type deleteFlags struct {
+	source string
+	all    bool
+	force  bool
+}
 
 func newDeleteCmd() *cobra.Command {
+	var flags deleteFlags
+
 	cmd := &cobra.Command{
 		Use:   "delete [fact-id]",
 		Short: "Delete facts",
 		Long:  "Deletes facts by ID, source file, or all facts.",
-		RunE:  runDelete,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runDelete(cmd, args, flags)
+		},
 	}
 
-	cmd.Flags().StringVarP(&deleteSource, "source", "s", "", "Delete all facts from source file")
-	cmd.Flags().BoolVarP(&deleteAll, "all", "a", false, "Delete all facts")
-	cmd.Flags().BoolVarP(&deleteForce, "force", "f", false, "Skip confirmation prompt")
+	cmd.Flags().StringVarP(&flags.source, "source", "s", "", "Delete all facts from source file")
+	cmd.Flags().BoolVarP(&flags.all, "all", "a", false, "Delete all facts")
+	cmd.Flags().BoolVarP(&flags.force, "force", "f", false, "Skip confirmation prompt")
 
 	return cmd
 }
 
-func runDelete(cmd *cobra.Command, args []string) error {
+func runDelete(cmd *cobra.Command, args []string, flags deleteFlags) error {
 	ctx := cmd.Context()
 
 	cwd, err := os.Getwd()
@@ -52,8 +56,8 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	defer repo.Close()
 
 	switch {
-	case deleteAll:
-		if !deleteForce {
+	case flags.all:
+		if !flags.force {
 			count, _ := repo.Count(ctx)
 			if !confirmAction(fmt.Sprintf("Delete all %d facts?", count)) {
 				fmt.Println("Cancelled.")
@@ -65,22 +69,22 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Println("All facts deleted.")
 
-	case deleteSource != "":
-		facts, _ := repo.ListBySource(ctx, deleteSource, 1000)
+	case flags.source != "":
+		facts, _ := repo.ListBySource(ctx, flags.source, 1000)
 		if len(facts) == 0 {
-			fmt.Printf("No facts found from source: %s\n", deleteSource)
+			fmt.Printf("No facts found from source: %s\n", flags.source)
 			return nil
 		}
-		if !deleteForce {
-			if !confirmAction(fmt.Sprintf("Delete %d facts from %s?", len(facts), deleteSource)) {
+		if !flags.force {
+			if !confirmAction(fmt.Sprintf("Delete %d facts from %s?", len(facts), flags.source)) {
 				fmt.Println("Cancelled.")
 				return nil
 			}
 		}
-		if err := repo.DeleteBySource(ctx, deleteSource); err != nil {
+		if err := repo.DeleteBySource(ctx, flags.source); err != nil {
 			return fmt.Errorf("deleting facts by source: %w", err)
 		}
-		fmt.Printf("Deleted %d facts from %s\n", len(facts), deleteSource)
+		fmt.Printf("Deleted %d facts from %s\n", len(facts), flags.source)
 
 	case len(args) > 0:
 		factID := args[0]
