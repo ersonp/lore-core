@@ -30,6 +30,11 @@ qdrant:
 
 // WriteDefault creates the .lore directory and writes a default config file.
 func WriteDefault(basePath string) error {
+	return WriteDefaultWithWorld(basePath, "default")
+}
+
+// WriteDefaultWithWorld creates the .lore directory and writes a config file with the specified world.
+func WriteDefaultWithWorld(basePath string, worldName string) error {
 	configDir := filepath.Join(basePath, DefaultConfigDir)
 	configFile := filepath.Join(configDir, DefaultConfigFile)
 
@@ -41,7 +46,31 @@ func WriteDefault(basePath string) error {
 		return fmt.Errorf("config file already exists: %s", configFile)
 	}
 
-	if err := os.WriteFile(configFile, []byte(DefaultConfigYAML), 0644); err != nil {
+	collection := GenerateCollectionName(worldName)
+	configContent := fmt.Sprintf(`# Lore-Core Configuration
+
+llm:
+  provider: openai
+  model: gpt-4o-mini
+  # api_key: your-api-key (or set OPENAI_API_KEY env var)
+
+embedder:
+  provider: openai
+  model: text-embedding-3-small
+  # api_key: your-api-key (or set OPENAI_API_KEY env var)
+
+qdrant:
+  host: localhost
+  port: 6334
+  # api_key: your-api-key (for Qdrant Cloud)
+
+worlds:
+  %s:
+    collection: %s
+    description: ""
+`, worldName, collection)
+
+	if err := os.WriteFile(configFile, []byte(configContent), 0644); err != nil {
 		return fmt.Errorf("writing config file: %w", err)
 	}
 
