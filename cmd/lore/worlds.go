@@ -13,6 +13,43 @@ import (
 	"github.com/ersonp/lore-core/internal/infrastructure/vectordb/qdrant"
 )
 
+// worldManager handles qdrant collection operations for worlds.
+type worldManager struct {
+	cfg *config.Config
+}
+
+// configFile represents the YAML config file structure for reading/writing.
+type configFile struct {
+	LLM      configLLM                   `yaml:"llm,omitempty"`
+	Embedder configEmbedder              `yaml:"embedder,omitempty"`
+	Qdrant   configQdrant                `yaml:"qdrant,omitempty"`
+	Worlds   map[string]configWorldEntry `yaml:"worlds,omitempty"`
+}
+
+type configLLM struct {
+	Provider string `yaml:"provider,omitempty"`
+	Model    string `yaml:"model,omitempty"`
+	APIKey   string `yaml:"api_key,omitempty"`
+}
+
+type configEmbedder struct {
+	Provider string `yaml:"provider,omitempty"`
+	Model    string `yaml:"model,omitempty"`
+	APIKey   string `yaml:"api_key,omitempty"`
+}
+
+type configQdrant struct {
+	Host       string `yaml:"host,omitempty"`
+	Port       int    `yaml:"port,omitempty"`
+	Collection string `yaml:"collection,omitempty"`
+	APIKey     string `yaml:"api_key,omitempty"`
+}
+
+type configWorldEntry struct {
+	Collection  string `yaml:"collection"`
+	Description string `yaml:"description,omitempty"`
+}
+
 func newWorldsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "worlds",
@@ -122,7 +159,8 @@ func runWorldsCreate(cmd *cobra.Command, name string, description string) error 
 		}
 	}
 
-	if err := createQdrantCollection(ctx, cfg, collection); err != nil {
+	mgr := &worldManager{cfg: cfg}
+	if err := mgr.createCollection(ctx, collection); err != nil {
 		return fmt.Errorf("creating qdrant collection: %w", err)
 	}
 
@@ -166,14 +204,16 @@ func runWorldsDelete(cmd *cobra.Command, name string, force bool) error {
 		return fmt.Errorf("world %q not found", name)
 	}
 
+	mgr := &worldManager{cfg: cfg}
+
 	if !force {
-		count, err := getCollectionCount(ctx, cfg, world.Collection)
+		count, err := mgr.getCollectionCount(ctx, world.Collection)
 		if err == nil && count > 0 {
 			return fmt.Errorf("world %q contains %d facts, use --force to delete", name, count)
 		}
 	}
 
-	if err := deleteQdrantCollection(ctx, cfg, world.Collection); err != nil {
+	if err := mgr.deleteCollection(ctx, world.Collection); err != nil {
 		fmt.Printf("Warning: could not delete collection %q: %v\n", world.Collection, err)
 	}
 
@@ -187,35 +227,33 @@ func runWorldsDelete(cmd *cobra.Command, name string, force bool) error {
 }
 
 func addWorldToConfig(basePath string, name string, world config.WorldConfig) error {
-	configFile := config.ConfigFilePath(basePath)
+	configPath := config.ConfigFilePath(basePath)
 
-	data, err := os.ReadFile(configFile)
+	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return fmt.Errorf("reading config file: %w", err)
 	}
 
-	var rawConfig map[string]interface{}
-	if err := yaml.Unmarshal(data, &rawConfig); err != nil {
+	var cfg configFile
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return fmt.Errorf("parsing config file: %w", err)
 	}
 
-	worlds, ok := rawConfig["worlds"].(map[string]interface{})
-	if !ok {
-		worlds = make(map[string]interface{})
+	if cfg.Worlds == nil {
+		cfg.Worlds = make(map[string]configWorldEntry)
 	}
 
-	worlds[name] = map[string]interface{}{
-		"collection":  world.Collection,
-		"description": world.Description,
+	cfg.Worlds[name] = configWorldEntry{
+		Collection:  world.Collection,
+		Description: world.Description,
 	}
-	rawConfig["worlds"] = worlds
 
-	newData, err := yaml.Marshal(rawConfig)
+	newData, err := yaml.Marshal(&cfg)
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
 
-	if err := os.WriteFile(configFile, newData, 0644); err != nil {
+	if err := os.WriteFile(configPath, newData, 0644); err != nil {
 		return fmt.Errorf("writing config file: %w", err)
 	}
 
@@ -223,38 +261,36 @@ func addWorldToConfig(basePath string, name string, world config.WorldConfig) er
 }
 
 func removeWorldFromConfig(basePath string, name string) error {
-	configFile := config.ConfigFilePath(basePath)
+	configPath := config.ConfigFilePath(basePath)
 
-	data, err := os.ReadFile(configFile)
+	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return fmt.Errorf("reading config file: %w", err)
 	}
 
-	var rawConfig map[string]interface{}
-	if err := yaml.Unmarshal(data, &rawConfig); err != nil {
+	var cfg configFile
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return fmt.Errorf("parsing config file: %w", err)
 	}
 
-	worlds, ok := rawConfig["worlds"].(map[string]interface{})
-	if ok {
-		delete(worlds, name)
-		rawConfig["worlds"] = worlds
+	if cfg.Worlds != nil {
+		delete(cfg.Worlds, name)
 	}
 
-	newData, err := yaml.Marshal(rawConfig)
+	newData, err := yaml.Marshal(&cfg)
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
 
-	if err := os.WriteFile(configFile, newData, 0644); err != nil {
+	if err := os.WriteFile(configPath, newData, 0644); err != nil {
 		return fmt.Errorf("writing config file: %w", err)
 	}
 
 	return nil
 }
 
-func createQdrantCollection(ctx context.Context, cfg *config.Config, collection string) error {
-	qdrantCfg := cfg.Qdrant
+func (m *worldManager) createCollection(ctx context.Context, collection string) error {
+	qdrantCfg := m.cfg.Qdrant
 	qdrantCfg.Collection = collection
 
 	repo, err := qdrant.NewRepository(qdrantCfg)
@@ -266,8 +302,8 @@ func createQdrantCollection(ctx context.Context, cfg *config.Config, collection 
 	return repo.EnsureCollection(ctx, embedder.VectorSize)
 }
 
-func getCollectionCount(ctx context.Context, cfg *config.Config, collection string) (uint64, error) {
-	qdrantCfg := cfg.Qdrant
+func (m *worldManager) getCollectionCount(ctx context.Context, collection string) (uint64, error) {
+	qdrantCfg := m.cfg.Qdrant
 	qdrantCfg.Collection = collection
 
 	repo, err := qdrant.NewRepository(qdrantCfg)
@@ -279,8 +315,8 @@ func getCollectionCount(ctx context.Context, cfg *config.Config, collection stri
 	return repo.Count(ctx)
 }
 
-func deleteQdrantCollection(ctx context.Context, cfg *config.Config, collection string) error {
-	qdrantCfg := cfg.Qdrant
+func (m *worldManager) deleteCollection(ctx context.Context, collection string) error {
+	qdrantCfg := m.cfg.Qdrant
 	qdrantCfg.Collection = collection
 
 	repo, err := qdrant.NewRepository(qdrantCfg)
