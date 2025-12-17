@@ -418,6 +418,140 @@ func (c Config) GetChunkSize() int {
 
 ---
 
+## Anti-Patterns to Avoid
+
+### No mutable global variables for flags
+Use local variables with closures for Cobra flags:
+
+```go
+// Bad - global mutable state
+var myFlag string
+
+func newCmd() *cobra.Command {
+    cmd := &cobra.Command{RunE: runCmd}
+    cmd.Flags().StringVar(&myFlag, "flag", "", "description")
+    return cmd
+}
+
+// Good - local scope with closure
+func newCmd() *cobra.Command {
+    var myFlag string
+    cmd := &cobra.Command{
+        RunE: func(cmd *cobra.Command, args []string) error {
+            return runCmd(cmd, args, myFlag)
+        },
+    }
+    cmd.Flags().StringVar(&myFlag, "flag", "", "description")
+    return cmd
+}
+```
+
+### No magic numbers
+Use named constants for numeric values:
+
+```go
+// Bad
+facts, err := repo.List(ctx, 1000, 0)
+
+// Good
+const DefaultListLimit = 1000
+facts, err := repo.List(ctx, DefaultListLimit, 0)
+```
+
+### No ignored errors
+Always handle or explicitly acknowledge errors:
+
+```go
+// Bad - silent failure
+count, _ := repo.Count(ctx)
+
+// Good - handle error
+count, err := repo.Count(ctx)
+if err != nil {
+    log.Printf("warning: could not get count: %v", err)
+    count = 0
+}
+
+// Good - document intentional ignore
+response, _ := reader.ReadString('\n') // EOF treated as empty
+```
+
+### No deep nesting
+Use early returns and guard clauses (max 3 levels):
+
+```go
+// Bad - deep nesting
+if condition1 {
+    if condition2 {
+        if condition3 {
+            doSomething()
+        }
+    }
+}
+
+// Good - early returns
+if !condition1 {
+    return
+}
+if !condition2 {
+    return
+}
+if !condition3 {
+    return
+}
+doSomething()
+```
+
+### No empty interface without reason
+Prefer typed structs over `interface{}` or `any`:
+
+```go
+// Bad - loses type safety
+data := map[string]interface{}{}
+
+// Good - typed struct
+type Config struct {
+    Name  string
+    Value int
+}
+```
+
+### No panics in library code
+Return errors instead of panicking:
+
+```go
+// Bad
+func Parse(s string) int {
+    v, err := strconv.Atoi(s)
+    if err != nil {
+        panic(err)
+    }
+    return v
+}
+
+// Good
+func Parse(s string) (int, error) {
+    return strconv.Atoi(s)
+}
+```
+
+### No context in structs
+Pass context as first parameter, don't store it:
+
+```go
+// Bad
+type Service struct {
+    ctx context.Context
+}
+
+// Good
+func (s *Service) DoWork(ctx context.Context) error {
+    // use ctx here
+}
+```
+
+---
+
 ## Makefile Commands
 
 ```bash
