@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ersonp/lore-core/internal/domain/entities"
+	"github.com/ersonp/lore-core/internal/domain/ports"
 	"github.com/ersonp/lore-core/internal/infrastructure/config"
 )
 
@@ -20,6 +22,14 @@ type exportFlags struct {
 	source   string
 	limit    int
 }
+
+type exporter struct {
+	repo   ports.VectorDB
+	format string
+	output string
+}
+
+var validFormats = []string{"json", "csv", "markdown"}
 
 func newExportCmd() *cobra.Command {
 	var flags exportFlags
@@ -43,11 +53,12 @@ func newExportCmd() *cobra.Command {
 }
 
 func runExport(cmd *cobra.Command, flags exportFlags) error {
-	ctx := cmd.Context()
-
-	validFormats := []string{"json", "csv", "markdown"}
 	if !contains(validFormats, flags.format) {
 		return fmt.Errorf("invalid format %q, valid formats: %v", flags.format, validFormats)
+	}
+
+	if flags.factType != "" && !isValidType(flags.factType) {
+		return fmt.Errorf("invalid type %q, valid types: %v", flags.factType, validTypes)
 	}
 
 	cwd, err := os.Getwd()
@@ -66,52 +77,74 @@ func runExport(cmd *cobra.Command, flags exportFlags) error {
 	}
 	defer repo.Close()
 
+	e := &exporter{
+		repo:   repo,
+		format: flags.format,
+		output: flags.output,
+	}
+
+	ctx := cmd.Context()
+	facts, err := e.fetchFacts(ctx, flags.factType, flags.source, flags.limit)
+	if err != nil {
+		return err
+	}
+
+	return e.export(facts)
+}
+
+func (e *exporter) fetchFacts(ctx context.Context, factType, source string, limit int) ([]entities.Fact, error) {
 	var facts []entities.Fact
+	var err error
 
 	switch {
-	case flags.factType != "":
-		if !isValidType(flags.factType) {
-			return fmt.Errorf("invalid type %q, valid types: %v", flags.factType, validTypes)
-		}
-		facts, err = repo.ListByType(ctx, entities.FactType(flags.factType), flags.limit)
-	case flags.source != "":
-		facts, err = repo.ListBySource(ctx, flags.source, flags.limit)
+	case factType != "":
+		facts, err = e.repo.ListByType(ctx, entities.FactType(factType), limit)
+	case source != "":
+		facts, err = e.repo.ListBySource(ctx, source, limit)
 	default:
-		facts, err = repo.List(ctx, flags.limit, 0)
+		facts, err = e.repo.List(ctx, limit, 0)
 	}
 
 	if err != nil {
-		return fmt.Errorf("listing facts: %w", err)
+		return nil, fmt.Errorf("listing facts: %w", err)
 	}
 
 	if len(facts) == 0 {
-		return fmt.Errorf("no facts found to export")
+		return nil, fmt.Errorf("no facts found to export")
 	}
 
-	var output string
-	switch flags.format {
-	case "json":
-		output, err = formatJSON(facts)
-	case "csv":
-		output, err = formatCSV(facts)
-	case "markdown":
-		output, err = formatMarkdown(facts)
-	}
+	return facts, nil
+}
 
+func (e *exporter) export(facts []entities.Fact) error {
+	output, err := e.formatFacts(facts)
 	if err != nil {
 		return fmt.Errorf("formatting output: %w", err)
 	}
 
-	if flags.output != "" {
-		if err := os.WriteFile(flags.output, []byte(output), 0644); err != nil {
+	if e.output != "" {
+		if err := os.WriteFile(e.output, []byte(output), 0644); err != nil {
 			return fmt.Errorf("writing file: %w", err)
 		}
-		fmt.Printf("Exported %d facts to %s\n", len(facts), flags.output)
-	} else {
-		fmt.Print(output)
+		fmt.Printf("Exported %d facts to %s\n", len(facts), e.output)
+		return nil
 	}
 
+	fmt.Print(output)
 	return nil
+}
+
+func (e *exporter) formatFacts(facts []entities.Fact) (string, error) {
+	switch e.format {
+	case "json":
+		return formatJSON(facts)
+	case "csv":
+		return formatCSV(facts)
+	case "markdown":
+		return formatMarkdown(facts)
+	default:
+		return "", fmt.Errorf("unknown format: %s", e.format)
+	}
 }
 
 func formatJSON(facts []entities.Fact) (string, error) {
