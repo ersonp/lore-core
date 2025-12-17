@@ -26,7 +26,7 @@ func newListCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().IntVarP(&limit, "limit", "l", 50, "Maximum number of facts to display")
+	cmd.Flags().IntVarP(&limit, "limit", "l", DefaultListLimit, "Maximum number of facts to display")
 	cmd.Flags().StringVarP(&factType, "type", "t", "", "Filter by fact type")
 	cmd.Flags().StringVarP(&source, "source", "s", "", "Filter by source file")
 

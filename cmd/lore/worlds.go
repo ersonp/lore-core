@@ -9,6 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/ersonp/lore-core/internal/infrastructure/config"
+	embedder "github.com/ersonp/lore-core/internal/infrastructure/embedder/openai"
 	"github.com/ersonp/lore-core/internal/infrastructure/vectordb/qdrant"
 )
 
@@ -262,7 +263,7 @@ func createQdrantCollection(ctx context.Context, cfg *config.Config, collection 
 	}
 	defer repo.Close()
 
-	return repo.EnsureCollection(ctx, 1536)
+	return repo.EnsureCollection(ctx, embedder.VectorSize)
 }
 
 func getCollectionCount(ctx context.Context, cfg *config.Config, collection string) (uint64, error) {

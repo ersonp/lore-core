@@ -70,7 +70,7 @@ func runDelete(cmd *cobra.Command, args []string, flags deleteFlags) error {
 		fmt.Println("All facts deleted.")
 
 	case flags.source != "":
-		facts, _ := repo.ListBySource(ctx, flags.source, 1000)
+		facts, _ := repo.ListBySource(ctx, flags.source, MaxDeleteBatchSize)
 		if len(facts) == 0 {
 			fmt.Printf("No facts found from source: %s\n", flags.source)
 			return nil

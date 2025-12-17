@@ -29,7 +29,7 @@ func newQueryCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().IntVarP(&limit, "limit", "l", 10, "Maximum number of results")
+	cmd.Flags().IntVarP(&limit, "limit", "l", DefaultQueryLimit, "Maximum number of results")
 	cmd.Flags().StringVarP(&factType, "type", "t", "", "Filter by fact type (character, location, event, relationship, rule, timeline)")
 
 	return cmd

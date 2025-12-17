@@ -37,7 +37,7 @@ func newExportCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&flags.output, "output", "o", "", "Output file (default: stdout)")
 	cmd.Flags().StringVarP(&flags.factType, "type", "t", "", "Filter by fact type")
 	cmd.Flags().StringVarP(&flags.source, "source", "s", "", "Filter by source file")
-	cmd.Flags().IntVarP(&flags.limit, "limit", "l", 1000, "Maximum number of facts to export")
+	cmd.Flags().IntVarP(&flags.limit, "limit", "l", DefaultExportLimit, "Maximum number of facts to export")
 
 	return cmd
 }
