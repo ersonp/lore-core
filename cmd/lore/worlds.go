@@ -87,24 +87,37 @@ func runWorldsCreate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("getting current directory: %w", err)
 	}
 
+	collection := config.GenerateCollectionName(name)
+	initialized := false
+
+	// Check if config exists, if not initialize
+	if !config.Exists(cwd) {
+		if err := config.WriteDefaultWithWorld(cwd, name, createDescription); err != nil {
+			return fmt.Errorf("initializing config: %w", err)
+		}
+		fmt.Printf("Initialized lore in %s\n", config.ConfigDir(cwd))
+		initialized = true
+	}
+
 	cfg, err := config.Load(cwd)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	if _, exists := cfg.Worlds[name]; exists {
-		return fmt.Errorf("world %q already exists", name)
-	}
+	// If not initialized, add world to existing config
+	if !initialized {
+		if _, exists := cfg.Worlds[name]; exists {
+			return fmt.Errorf("world %q already exists", name)
+		}
 
-	collection := config.GenerateCollectionName(name)
+		newWorld := config.WorldConfig{
+			Collection:  collection,
+			Description: createDescription,
+		}
 
-	newWorld := config.WorldConfig{
-		Collection:  collection,
-		Description: createDescription,
-	}
-
-	if err := addWorldToConfig(cwd, name, newWorld); err != nil {
-		return fmt.Errorf("adding world to config: %w", err)
+		if err := addWorldToConfig(cwd, name, newWorld); err != nil {
+			return fmt.Errorf("adding world to config: %w", err)
+		}
 	}
 
 	if err := createQdrantCollection(ctx, cfg, collection); err != nil {

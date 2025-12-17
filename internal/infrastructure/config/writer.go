@@ -30,11 +30,11 @@ qdrant:
 
 // WriteDefault creates the .lore directory and writes a default config file.
 func WriteDefault(basePath string) error {
-	return WriteDefaultWithWorld(basePath, "default")
+	return WriteDefaultWithWorld(basePath, "default", "")
 }
 
 // WriteDefaultWithWorld creates the .lore directory and writes a config file with the specified world.
-func WriteDefaultWithWorld(basePath string, worldName string) error {
+func WriteDefaultWithWorld(basePath string, worldName string, description string) error {
 	configDir := filepath.Join(basePath, DefaultConfigDir)
 	configFile := filepath.Join(configDir, DefaultConfigFile)
 
@@ -67,8 +67,8 @@ qdrant:
 worlds:
   %s:
     collection: %s
-    description: ""
-`, worldName, collection)
+    description: "%s"
+`, worldName, collection, description)
 
 	if err := os.WriteFile(configFile, []byte(configContent), 0644); err != nil {
 		return fmt.Errorf("writing config file: %w", err)

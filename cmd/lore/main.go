@@ -43,7 +43,6 @@ func run(ctx context.Context) error {
 	rootCmd.PersistentFlags().StringVarP(&globalWorld, "world", "w", "", "World to operate on (required)")
 
 	rootCmd.AddCommand(
-		newInitCmd(),
 		newIngestCmd(),
 		newQueryCmd(),
 		newListCmd(),
