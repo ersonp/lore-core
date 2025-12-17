@@ -420,32 +420,28 @@ func (c Config) GetChunkSize() int {
 
 ## Makefile Commands
 
-```makefile
-format:
-	goimports -w .
-
-lint:
-	golangci-lint run
-
-test:
-	go test ./...
-
-vet:
-	go vet ./...
-
-check: format vet lint test
+```bash
+make format   # Format all Go files with goimports
+make lint     # Run golangci-lint
+make test     # Run all tests
+make vet      # Run go vet
+make build    # Build binary to bin/lore
+make check    # Run all checks (format, vet, lint, test)
+make vendor   # Sync vendor directory (go mod tidy && go mod vendor)
+make clean    # Clean build artifacts
+make tools    # Install development tools (goimports, golangci-lint, mockery)
 ```
 
 ---
 
 ## Pre-commit Checklist
 
-Before committing:
+Run before providing commit message to user:
 ```bash
-make format
-make vet
-make test
+make check
 ```
+
+This runs format, vet, lint, and test. Fix any issues before presenting the commit.
 
 ---
 
