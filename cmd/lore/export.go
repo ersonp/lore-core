@@ -29,8 +29,6 @@ type exporter struct {
 	output string
 }
 
-var validFormats = []string{"json", "csv", "markdown"}
-
 func newExportCmd() *cobra.Command {
 	var flags exportFlags
 

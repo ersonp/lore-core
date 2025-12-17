@@ -11,8 +11,6 @@ import (
 	"github.com/ersonp/lore-core/internal/infrastructure/config"
 )
 
-var validTypes = []string{"character", "location", "event", "relationship", "rule", "timeline"}
-
 func newQueryCmd() *cobra.Command {
 	var (
 		limit    int
