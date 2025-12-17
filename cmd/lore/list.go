@@ -75,8 +75,12 @@ func runList(cmd *cobra.Command, limit int, factType string, source string) erro
 		return nil
 	}
 
-	count, _ := repo.Count(ctx)
-	fmt.Printf("Showing %d of %d facts:\n\n", len(facts), count)
+	count, err := repo.Count(ctx)
+	if err != nil {
+		fmt.Printf("Showing %d facts:\n\n", len(facts))
+	} else {
+		fmt.Printf("Showing %d of %d facts:\n\n", len(facts), count)
+	}
 
 	for _, fact := range facts {
 		fmt.Printf("ID: %s\n", fact.ID)

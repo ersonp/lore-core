@@ -2,12 +2,14 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/ersonp/lore-core/internal/domain/ports"
 	"github.com/ersonp/lore-core/internal/infrastructure/config"
 )
 
@@ -15,6 +17,11 @@ type deleteFlags struct {
 	source string
 	all    bool
 	force  bool
+}
+
+type deleter struct {
+	repo  ports.VectorDB
+	force bool
 }
 
 func newDeleteCmd() *cobra.Command {
@@ -37,8 +44,6 @@ func newDeleteCmd() *cobra.Command {
 }
 
 func runDelete(cmd *cobra.Command, args []string, flags deleteFlags) error {
-	ctx := cmd.Context()
-
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("getting current directory: %w", err)
@@ -55,55 +60,83 @@ func runDelete(cmd *cobra.Command, args []string, flags deleteFlags) error {
 	}
 	defer repo.Close()
 
+	d := &deleter{
+		repo:  repo,
+		force: flags.force,
+	}
+
+	ctx := cmd.Context()
 	switch {
 	case flags.all:
-		if !flags.force {
-			count, _ := repo.Count(ctx)
-			if !confirmAction(fmt.Sprintf("Delete all %d facts?", count)) {
-				fmt.Println("Cancelled.")
-				return nil
-			}
-		}
-		if err := repo.DeleteAll(ctx); err != nil {
-			return fmt.Errorf("deleting all facts: %w", err)
-		}
-		fmt.Println("All facts deleted.")
-
+		return d.deleteAll(ctx)
 	case flags.source != "":
-		facts, _ := repo.ListBySource(ctx, flags.source, MaxDeleteBatchSize)
-		if len(facts) == 0 {
-			fmt.Printf("No facts found from source: %s\n", flags.source)
-			return nil
-		}
-		if !flags.force {
-			if !confirmAction(fmt.Sprintf("Delete %d facts from %s?", len(facts), flags.source)) {
-				fmt.Println("Cancelled.")
-				return nil
-			}
-		}
-		if err := repo.DeleteBySource(ctx, flags.source); err != nil {
-			return fmt.Errorf("deleting facts by source: %w", err)
-		}
-		fmt.Printf("Deleted %d facts from %s\n", len(facts), flags.source)
-
+		return d.deleteBySource(ctx, flags.source)
 	case len(args) > 0:
-		factID := args[0]
-		if err := repo.Delete(ctx, factID); err != nil {
-			return fmt.Errorf("deleting fact: %w", err)
-		}
-		fmt.Printf("Deleted fact: %s\n", factID)
-
+		return d.deleteByID(ctx, args[0])
 	default:
 		return fmt.Errorf("specify a fact ID, --source, or --all")
 	}
+}
 
+func (d *deleter) deleteAll(ctx context.Context) error {
+	if !d.force {
+		prompt := d.buildDeleteAllPrompt(ctx)
+		if !confirmAction(prompt) {
+			fmt.Println("Cancelled.")
+			return nil
+		}
+	}
+
+	if err := d.repo.DeleteAll(ctx); err != nil {
+		return fmt.Errorf("deleting all facts: %w", err)
+	}
+	fmt.Println("All facts deleted.")
+	return nil
+}
+
+func (d *deleter) buildDeleteAllPrompt(ctx context.Context) string {
+	count, err := d.repo.Count(ctx)
+	if err != nil {
+		return "Delete all facts?"
+	}
+	return fmt.Sprintf("Delete all %d facts?", count)
+}
+
+func (d *deleter) deleteBySource(ctx context.Context, source string) error {
+	facts, err := d.repo.ListBySource(ctx, source, MaxDeleteBatchSize)
+	if err != nil {
+		return fmt.Errorf("listing facts by source: %w", err)
+	}
+
+	if len(facts) == 0 {
+		fmt.Printf("No facts found from source: %s\n", source)
+		return nil
+	}
+
+	if !d.force && !confirmAction(fmt.Sprintf("Delete %d facts from %s?", len(facts), source)) {
+		fmt.Println("Cancelled.")
+		return nil
+	}
+
+	if err := d.repo.DeleteBySource(ctx, source); err != nil {
+		return fmt.Errorf("deleting facts by source: %w", err)
+	}
+	fmt.Printf("Deleted %d facts from %s\n", len(facts), source)
+	return nil
+}
+
+func (d *deleter) deleteByID(ctx context.Context, factID string) error {
+	if err := d.repo.Delete(ctx, factID); err != nil {
+		return fmt.Errorf("deleting fact: %w", err)
+	}
+	fmt.Printf("Deleted fact: %s\n", factID)
 	return nil
 }
 
 func confirmAction(prompt string) bool {
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Printf("%s [y/N]: ", prompt)
-	response, _ := reader.ReadString('\n')
+	response, _ := reader.ReadString('\n') // Error ignored: EOF/error treated as "no"
 	response = strings.TrimSpace(strings.ToLower(response))
 	return response == "y" || response == "yes"
 }

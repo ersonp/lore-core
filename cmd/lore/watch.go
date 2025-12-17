@@ -163,17 +163,13 @@ func runWatch(cmd *cobra.Command, flags watchFlags) error {
 		// Handle empty lines for double-enter detection
 		if line == "" {
 			emptyLineCount++
-			if emptyLineCount >= 1 && inputBuffer.Len() > 0 {
-				// Process the input
-				text := strings.TrimSpace(inputBuffer.String())
-				if text != "" {
-					if err := state.processInput(ctx, text); err != nil {
-						fmt.Printf("Error: %v\n", err)
-					}
-				}
-				inputBuffer.Reset()
-				emptyLineCount = 0
+			if emptyLineCount < 1 || inputBuffer.Len() == 0 {
+				continue
 			}
+			if err := processBufferedInput(ctx, state, &inputBuffer); err != nil {
+				fmt.Printf("Error: %v\n", err)
+			}
+			emptyLineCount = 0
 			continue
 		}
 
@@ -185,6 +181,15 @@ func runWatch(cmd *cobra.Command, flags watchFlags) error {
 	}
 
 	return scanner.Err()
+}
+
+func processBufferedInput(ctx context.Context, state *watchState, inputBuffer *strings.Builder) error {
+	text := strings.TrimSpace(inputBuffer.String())
+	inputBuffer.Reset()
+	if text == "" {
+		return nil
+	}
+	return state.processInput(ctx, text)
 }
 
 func (s *watchState) processInput(ctx context.Context, text string) error {
@@ -245,7 +250,7 @@ func (s *watchState) savePendingFacts(ctx context.Context) error {
 	if hasCriticalIssues(s.pendingIssues) {
 		fmt.Print("Warning: There are CRITICAL consistency issues. Save anyway? [y/N] ")
 		reader := bufio.NewReader(os.Stdin)
-		response, _ := reader.ReadString('\n')
+		response, _ := reader.ReadString('\n') // Error ignored: EOF/error treated as "no"
 		response = strings.ToLower(strings.TrimSpace(response))
 		if response != "y" && response != "yes" {
 			fmt.Println("Save cancelled.")
