@@ -36,6 +36,7 @@ go.work.sum
 
 # Build file
 /lore
+bin/
 
 # Claude Code working directories
 reports/
