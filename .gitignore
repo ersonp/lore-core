@@ -31,6 +31,12 @@ go.work.sum
 # .idea/
 # .vscode/
 
+# Config files
+.lore/
+
+# Build file
+lore
+
 # Claude Code working directories
 reports/
 tasks/

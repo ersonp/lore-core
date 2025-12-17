@@ -25,4 +25,22 @@ type VectorDB interface {
 
 	// Delete removes a fact by its ID.
 	Delete(ctx context.Context, id string) error
+
+	// List returns all facts with pagination.
+	List(ctx context.Context, limit int, offset uint64) ([]entities.Fact, error)
+
+	// ListByType returns facts filtered by type.
+	ListByType(ctx context.Context, factType entities.FactType, limit int) ([]entities.Fact, error)
+
+	// ListBySource returns facts filtered by source file.
+	ListBySource(ctx context.Context, sourceFile string, limit int) ([]entities.Fact, error)
+
+	// DeleteBySource removes all facts from a source file.
+	DeleteBySource(ctx context.Context, sourceFile string) error
+
+	// DeleteAll removes all facts.
+	DeleteAll(ctx context.Context) error
+
+	// Count returns the total number of facts.
+	Count(ctx context.Context) (uint64, error)
 }

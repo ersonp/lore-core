@@ -41,6 +41,9 @@ func run(ctx context.Context) error {
 		newInitCmd(),
 		newIngestCmd(),
 		newQueryCmd(),
+		newListCmd(),
+		newDeleteCmd(),
+		newExportCmd(),
 	)
 
 	return rootCmd.ExecuteContext(ctx)

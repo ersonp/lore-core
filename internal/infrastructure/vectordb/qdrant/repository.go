@@ -231,6 +231,183 @@ func (r *Repository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// List returns all facts with pagination.
+func (r *Repository) List(ctx context.Context, limit int, offset uint64) ([]entities.Fact, error) {
+	var offsetPtr *pb.PointId
+	if offset > 0 {
+		offsetPtr = &pb.PointId{
+			PointIdOptions: &pb.PointId_Num{Num: offset},
+		}
+	}
+
+	resp, err := r.points.Scroll(ctx, &pb.ScrollPoints{
+		CollectionName: r.collection,
+		Limit:          pb.PtrOf(uint32(limit)),
+		Offset:         offsetPtr,
+		WithPayload: &pb.WithPayloadSelector{
+			SelectorOptions: &pb.WithPayloadSelector_Enable{Enable: true},
+		},
+		WithVectors: &pb.WithVectorsSelector{
+			SelectorOptions: &pb.WithVectorsSelector_Enable{Enable: false},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scrolling points: %w", err)
+	}
+
+	return retrievedPointsToFacts(resp.Result)
+}
+
+// ListByType returns facts filtered by type.
+func (r *Repository) ListByType(ctx context.Context, factType entities.FactType, limit int) ([]entities.Fact, error) {
+	resp, err := r.points.Scroll(ctx, &pb.ScrollPoints{
+		CollectionName: r.collection,
+		Limit:          pb.PtrOf(uint32(limit)),
+		Filter: &pb.Filter{
+			Must: []*pb.Condition{
+				{
+					ConditionOneOf: &pb.Condition_Field{
+						Field: &pb.FieldCondition{
+							Key: "type",
+							Match: &pb.Match{
+								MatchValue: &pb.Match_Keyword{
+									Keyword: string(factType),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		WithPayload: &pb.WithPayloadSelector{
+			SelectorOptions: &pb.WithPayloadSelector_Enable{Enable: true},
+		},
+		WithVectors: &pb.WithVectorsSelector{
+			SelectorOptions: &pb.WithVectorsSelector_Enable{Enable: false},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scrolling points by type: %w", err)
+	}
+
+	return retrievedPointsToFacts(resp.Result)
+}
+
+// ListBySource returns facts filtered by source file.
+func (r *Repository) ListBySource(ctx context.Context, sourceFile string, limit int) ([]entities.Fact, error) {
+	resp, err := r.points.Scroll(ctx, &pb.ScrollPoints{
+		CollectionName: r.collection,
+		Limit:          pb.PtrOf(uint32(limit)),
+		Filter: &pb.Filter{
+			Must: []*pb.Condition{
+				{
+					ConditionOneOf: &pb.Condition_Field{
+						Field: &pb.FieldCondition{
+							Key: "source_file",
+							Match: &pb.Match{
+								MatchValue: &pb.Match_Keyword{
+									Keyword: sourceFile,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		WithPayload: &pb.WithPayloadSelector{
+			SelectorOptions: &pb.WithPayloadSelector_Enable{Enable: true},
+		},
+		WithVectors: &pb.WithVectorsSelector{
+			SelectorOptions: &pb.WithVectorsSelector_Enable{Enable: false},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scrolling points by source: %w", err)
+	}
+
+	return retrievedPointsToFacts(resp.Result)
+}
+
+// DeleteBySource removes all facts from a source file.
+func (r *Repository) DeleteBySource(ctx context.Context, sourceFile string) error {
+	_, err := r.points.Delete(ctx, &pb.DeletePoints{
+		CollectionName: r.collection,
+		Points: &pb.PointsSelector{
+			PointsSelectorOneOf: &pb.PointsSelector_Filter{
+				Filter: &pb.Filter{
+					Must: []*pb.Condition{
+						{
+							ConditionOneOf: &pb.Condition_Field{
+								Field: &pb.FieldCondition{
+									Key: "source_file",
+									Match: &pb.Match{
+										MatchValue: &pb.Match_Keyword{
+											Keyword: sourceFile,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("deleting points by source: %w", err)
+	}
+
+	return nil
+}
+
+// DeleteAll removes all facts.
+func (r *Repository) DeleteAll(ctx context.Context) error {
+	_, err := r.points.Delete(ctx, &pb.DeletePoints{
+		CollectionName: r.collection,
+		Points: &pb.PointsSelector{
+			PointsSelectorOneOf: &pb.PointsSelector_Filter{
+				Filter: &pb.Filter{},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("deleting all points: %w", err)
+	}
+
+	return nil
+}
+
+// Count returns the total number of facts.
+func (r *Repository) Count(ctx context.Context) (uint64, error) {
+	resp, err := r.client.Get(ctx, &pb.GetCollectionInfoRequest{
+		CollectionName: r.collection,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("getting collection info: %w", err)
+	}
+
+	if resp.Result.PointsCount == nil {
+		return 0, nil
+	}
+
+	return *resp.Result.PointsCount, nil
+}
+
+// retrievedPointsToFacts converts retrieved points to facts.
+func retrievedPointsToFacts(points []*pb.RetrievedPoint) ([]entities.Fact, error) {
+	facts := make([]entities.Fact, 0, len(points))
+
+	for _, point := range points {
+		fact, err := pointToFact(point)
+		if err != nil {
+			return nil, err
+		}
+		facts = append(facts, fact)
+	}
+
+	return facts, nil
+}
+
 // pointToFact converts a Qdrant point to a Fact entity.
 func pointToFact(point *pb.RetrievedPoint) (entities.Fact, error) {
 	id := ""
