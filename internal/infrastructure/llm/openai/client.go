@@ -112,7 +112,7 @@ func (c *Client) ExtractFacts(ctx context.Context, text string) ([]entities.Fact
 			Type:       entities.FactType(rf.Type),
 			Subject:    rf.Subject,
 			Predicate:  rf.Predicate,
-			Object:     rf.Object,
+			Object:     objectToString(rf.Object),
 			Context:    rf.Context,
 			Confidence: rf.Confidence,
 		}
@@ -186,12 +186,31 @@ func (c *Client) CheckConsistency(ctx context.Context, newFacts []entities.Fact,
 
 // rawFact is the JSON structure for extracted facts.
 type rawFact struct {
-	Type       string  `json:"type"`
-	Subject    string  `json:"subject"`
-	Predicate  string  `json:"predicate"`
-	Object     string  `json:"object"`
-	Context    string  `json:"context,omitempty"`
-	Confidence float64 `json:"confidence"`
+	Type       string      `json:"type"`
+	Subject    string      `json:"subject"`
+	Predicate  string      `json:"predicate"`
+	Object     interface{} `json:"object"`
+	Context    string      `json:"context,omitempty"`
+	Confidence float64     `json:"confidence"`
+}
+
+// objectToString converts the object field to string (handles numbers from LLM).
+func objectToString(obj interface{}) string {
+	switch v := obj.(type) {
+	case string:
+		return v
+	case float64:
+		if v == float64(int(v)) {
+			return fmt.Sprintf("%d", int(v))
+		}
+		return fmt.Sprintf("%g", v)
+	case int:
+		return fmt.Sprintf("%d", v)
+	case bool:
+		return fmt.Sprintf("%t", v)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }
 
 // rawConsistencyIssue is the JSON structure for consistency issues.
