@@ -50,7 +50,7 @@ func runIngest(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	ingestHandler, _, repo, err := buildDependencies(cfg)
+	ingestHandler, _, repo, err := buildDependencies(cfg, globalWorld)
 	if err != nil {
 		return err
 	}

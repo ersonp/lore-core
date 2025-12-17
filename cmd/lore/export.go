@@ -56,7 +56,7 @@ func runExport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	_, _, repo, err := buildDependencies(cfg)
+	_, _, repo, err := buildDependencies(cfg, globalWorld)
 	if err != nil {
 		return err
 	}

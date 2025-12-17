@@ -51,7 +51,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	_, queryHandler, repo, err := buildDependencies(cfg)
+	_, queryHandler, repo, err := buildDependencies(cfg, globalWorld)
 	if err != nil {
 		return err
 	}

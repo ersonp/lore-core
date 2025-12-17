@@ -57,8 +57,20 @@ func runWatch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	if globalWorld == "" {
+		return fmt.Errorf("world is required (use --world flag)")
+	}
+
+	collection, err := cfg.GetCollectionForWorld(globalWorld)
+	if err != nil {
+		return err
+	}
+
+	qdrantCfg := cfg.Qdrant
+	qdrantCfg.Collection = collection
+
 	// Build dependencies for watch mode
-	repo, err := qdrant.NewRepository(cfg.Qdrant)
+	repo, err := qdrant.NewRepository(qdrantCfg)
 	if err != nil {
 		return fmt.Errorf("creating qdrant repository: %w", err)
 	}
