@@ -21,7 +21,8 @@ func newInitCmd() *cobra.Command {
 		RunE:  runInit,
 	}
 
-	cmd.Flags().StringVarP(&initWorld, "world", "w", "default", "Initial world name")
+	cmd.Flags().StringVarP(&initWorld, "world", "w", "", "Initial world name (required)")
+	_ = cmd.MarkFlagRequired("world")
 
 	return cmd
 }
