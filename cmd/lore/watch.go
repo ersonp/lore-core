@@ -51,8 +51,6 @@ type watchState struct {
 }
 
 func runWatch(cmd *cobra.Command, flags watchFlags) error {
-	ctx := cmd.Context()
-
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("getting current directory: %w", err)
@@ -75,7 +73,6 @@ func runWatch(cmd *cobra.Command, flags watchFlags) error {
 	qdrantCfg := cfg.Qdrant
 	qdrantCfg.Collection = collection
 
-	// Build dependencies for watch mode
 	repo, err := qdrant.NewRepository(qdrantCfg)
 	if err != nil {
 		return fmt.Errorf("creating qdrant repository: %w", err)
@@ -92,15 +89,17 @@ func runWatch(cmd *cobra.Command, flags watchFlags) error {
 		return fmt.Errorf("creating llm client: %w", err)
 	}
 
-	extractionSvc := services.NewExtractionService(llmClient, emb, repo)
-
 	state := &watchState{
-		extractionService: extractionSvc,
+		extractionService: services.NewExtractionService(llmClient, emb, repo),
 		vectorDB:          repo,
 		source:            flags.source,
 		autoSave:          flags.autoSave,
 	}
 
+	return state.runInputLoop(cmd.Context())
+}
+
+func (s *watchState) runInputLoop(ctx context.Context) error {
 	fmt.Println("Lore interactive mode. Enter text and press Enter twice to check.")
 	fmt.Println("Commands: 'save' to save pending facts, 'discard' to clear, 'list' to show pending, 'quit' to exit")
 	fmt.Println()
@@ -116,71 +115,89 @@ func runWatch(cmd *cobra.Command, flags watchFlags) error {
 		}
 
 		line := scanner.Text()
+		cmd := strings.ToLower(strings.TrimSpace(line))
 
-		// Handle commands
-		switch strings.ToLower(strings.TrimSpace(line)) {
-		case "quit", "exit":
-			if len(state.pendingFacts) > 0 {
-				fmt.Printf("Warning: %d pending facts will be lost. Type 'quit' again to confirm.\n", len(state.pendingFacts))
-				fmt.Print("> ")
-				if scanner.Scan() && strings.ToLower(strings.TrimSpace(scanner.Text())) == "quit" {
-					fmt.Println("Goodbye!")
-					return nil
-				}
-				continue
+		if handled, shouldExit := s.handleCommand(ctx, cmd, scanner); handled {
+			if shouldExit {
+				return nil
 			}
-			fmt.Println("Goodbye!")
-			return nil
-
-		case "save":
-			if err := state.savePendingFacts(ctx); err != nil {
-				fmt.Printf("Error saving facts: %v\n", err)
-			}
-			continue
-
-		case "discard":
-			state.pendingFacts = nil
-			state.pendingIssues = nil
-			fmt.Println("Pending facts discarded.")
-			continue
-
-		case "list":
-			state.showPendingFacts()
-			continue
-
-		case "help":
-			fmt.Println("Commands:")
-			fmt.Println("  save    - Save all pending facts to database")
-			fmt.Println("  discard - Discard all pending facts")
-			fmt.Println("  list    - Show pending facts")
-			fmt.Println("  quit    - Exit interactive mode")
-			fmt.Println("  help    - Show this help")
-			fmt.Println()
-			fmt.Println("Enter text and press Enter twice to extract and check facts.")
 			continue
 		}
 
-		// Handle empty lines for double-enter detection
-		if line == "" {
-			emptyLineCount++
-			if emptyLineCount < 1 || inputBuffer.Len() == 0 {
-				continue
-			}
-			if err := processBufferedInput(ctx, state, &inputBuffer); err != nil {
-				fmt.Printf("Error: %v\n", err)
-			}
-			emptyLineCount = 0
-			continue
-		}
-
-		emptyLineCount = 0
-		if inputBuffer.Len() > 0 {
-			inputBuffer.WriteString("\n")
-		}
-		inputBuffer.WriteString(line)
+		emptyLineCount = s.handleInput(ctx, line, &inputBuffer, emptyLineCount)
 	}
 
 	return scanner.Err()
+}
+
+// handleCommand processes user commands. Returns (handled, shouldExit).
+func (s *watchState) handleCommand(ctx context.Context, cmd string, scanner *bufio.Scanner) (bool, bool) {
+	switch cmd {
+	case "quit", "exit":
+		return true, s.handleQuit(scanner)
+	case "save":
+		if err := s.savePendingFacts(ctx); err != nil {
+			fmt.Printf("Error saving facts: %v\n", err)
+		}
+		return true, false
+	case "discard":
+		s.pendingFacts = nil
+		s.pendingIssues = nil
+		fmt.Println("Pending facts discarded.")
+		return true, false
+	case "list":
+		s.showPendingFacts()
+		return true, false
+	case "help":
+		s.showHelp()
+		return true, false
+	default:
+		return false, false
+	}
+}
+
+func (s *watchState) handleQuit(scanner *bufio.Scanner) bool {
+	if len(s.pendingFacts) > 0 {
+		fmt.Printf("Warning: %d pending facts will be lost. Type 'quit' again to confirm.\n", len(s.pendingFacts))
+		fmt.Print("> ")
+		if scanner.Scan() && strings.ToLower(strings.TrimSpace(scanner.Text())) == "quit" {
+			fmt.Println("Goodbye!")
+			return true
+		}
+		return false
+	}
+	fmt.Println("Goodbye!")
+	return true
+}
+
+func (s *watchState) showHelp() {
+	fmt.Println("Commands:")
+	fmt.Println("  save    - Save all pending facts to database")
+	fmt.Println("  discard - Discard all pending facts")
+	fmt.Println("  list    - Show pending facts")
+	fmt.Println("  quit    - Exit interactive mode")
+	fmt.Println("  help    - Show this help")
+	fmt.Println()
+	fmt.Println("Enter text and press Enter twice to extract and check facts.")
+}
+
+func (s *watchState) handleInput(ctx context.Context, line string, inputBuffer *strings.Builder, emptyLineCount int) int {
+	if line == "" {
+		emptyLineCount++
+		if emptyLineCount >= 1 && inputBuffer.Len() > 0 {
+			if err := processBufferedInput(ctx, s, inputBuffer); err != nil {
+				fmt.Printf("Error: %v\n", err)
+			}
+			return 0
+		}
+		return emptyLineCount
+	}
+
+	if inputBuffer.Len() > 0 {
+		inputBuffer.WriteString("\n")
+	}
+	inputBuffer.WriteString(line)
+	return 0
 }
 
 func processBufferedInput(ctx context.Context, state *watchState, inputBuffer *strings.Builder) error {

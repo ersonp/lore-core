@@ -75,24 +75,31 @@ func runList(cmd *cobra.Command, limit int, factType string, source string) erro
 		return nil
 	}
 
-	count, err := repo.Count(ctx)
-	if err != nil {
-		fmt.Printf("Showing %d facts:\n\n", len(facts))
+	count, _ := repo.Count(ctx) // Error handled in displayFacts
+	displayFacts(facts, count)
+	return nil
+}
+
+func displayFacts(facts []entities.Fact, totalCount uint64) {
+	if totalCount > 0 {
+		fmt.Printf("Showing %d of %d facts:\n\n", len(facts), totalCount)
 	} else {
-		fmt.Printf("Showing %d of %d facts:\n\n", len(facts), count)
+		fmt.Printf("Showing %d facts:\n\n", len(facts))
 	}
 
 	for _, fact := range facts {
-		fmt.Printf("ID: %s\n", fact.ID)
-		fmt.Printf("  [%s] %s %s %s\n", fact.Type, fact.Subject, fact.Predicate, fact.Object)
-		if fact.Context != "" {
-			fmt.Printf("  Context: %s\n", fact.Context)
-		}
-		if fact.SourceFile != "" {
-			fmt.Printf("  Source: %s\n", fact.SourceFile)
-		}
-		fmt.Println()
+		displayFact(fact)
 	}
+}
 
-	return nil
+func displayFact(fact entities.Fact) {
+	fmt.Printf("ID: %s\n", fact.ID)
+	fmt.Printf("  [%s] %s %s %s\n", fact.Type, fact.Subject, fact.Predicate, fact.Object)
+	if fact.Context != "" {
+		fmt.Printf("  Context: %s\n", fact.Context)
+	}
+	if fact.SourceFile != "" {
+		fmt.Printf("  Source: %s\n", fact.SourceFile)
+	}
+	fmt.Println()
 }
