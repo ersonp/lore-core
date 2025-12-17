@@ -111,9 +111,9 @@ func setDefaults(v *viper.Viper) {
 
 // bindEnvVars binds environment variables to config keys.
 func bindEnvVars(v *viper.Viper) {
-	v.BindEnv("llm.api_key", "OPENAI_API_KEY")
-	v.BindEnv("embedder.api_key", "OPENAI_API_KEY")
-	v.BindEnv("qdrant.api_key", "QDRANT_API_KEY")
+	_ = v.BindEnv("llm.api_key", "OPENAI_API_KEY")
+	_ = v.BindEnv("embedder.api_key", "OPENAI_API_KEY")
+	_ = v.BindEnv("qdrant.api_key", "QDRANT_API_KEY")
 }
 
 // applyEnvOverrides applies environment variable overrides.
