@@ -58,8 +58,7 @@ func TestMain(m *testing.M) {
 // cleanupFacts removes all facts between tests.
 func cleanupFacts(t *testing.T) {
 	t.Helper()
-	ctx := context.Background()
-	if err := testRepo.DeleteAll(ctx); err != nil {
+	if err := testRepo.DeleteAll(t.Context()); err != nil {
 		t.Fatalf("failed to cleanup facts: %v", err)
 	}
 }

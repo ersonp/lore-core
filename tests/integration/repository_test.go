@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"context"
 	"testing"
 
 	"github.com/google/uuid"
@@ -13,7 +12,7 @@ import (
 )
 
 func TestCollectionLifecycle(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Collection should already exist from TestMain
 	count, err := testRepo.Count(ctx)
@@ -26,7 +25,7 @@ func TestCollectionLifecycle(t *testing.T) {
 }
 
 func TestSaveAndFindByID(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	t.Cleanup(func() { cleanupFacts(t) })
 
 	fact := entities.Fact{
@@ -59,7 +58,7 @@ func TestSaveAndFindByID(t *testing.T) {
 }
 
 func TestSaveAndCount(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	t.Cleanup(func() { cleanupFacts(t) })
 
 	// Start with empty
@@ -86,7 +85,7 @@ func TestSaveAndCount(t *testing.T) {
 }
 
 func TestSaveAndDelete(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	t.Cleanup(func() { cleanupFacts(t) })
 
 	fact := entities.Fact{
@@ -118,7 +117,7 @@ func TestSaveAndDelete(t *testing.T) {
 }
 
 func TestBatchSave(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	t.Cleanup(func() { cleanupFacts(t) })
 
 	facts := []entities.Fact{
@@ -159,7 +158,7 @@ func TestBatchSave(t *testing.T) {
 }
 
 func TestDeleteAll(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	t.Cleanup(func() { cleanupFacts(t) })
 
 	// Save multiple facts
@@ -196,7 +195,7 @@ func TestDeleteAll(t *testing.T) {
 }
 
 func TestList(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	t.Cleanup(func() { cleanupFacts(t) })
 
 	// Save facts

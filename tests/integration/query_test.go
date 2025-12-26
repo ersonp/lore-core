@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"context"
 	"testing"
 
 	"github.com/google/uuid"
@@ -13,7 +12,7 @@ import (
 )
 
 func TestListByType(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	t.Cleanup(func() { cleanupFacts(t) })
 
 	// Save facts of different types
@@ -62,7 +61,7 @@ func TestListByType(t *testing.T) {
 }
 
 func TestListBySource(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	t.Cleanup(func() { cleanupFacts(t) })
 
 	// Save facts from different sources
@@ -114,7 +113,7 @@ func TestListBySource(t *testing.T) {
 }
 
 func TestDeleteBySource(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	t.Cleanup(func() { cleanupFacts(t) })
 
 	// Save facts from different sources
@@ -160,7 +159,7 @@ func TestDeleteBySource(t *testing.T) {
 }
 
 func TestSearch(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	t.Cleanup(func() { cleanupFacts(t) })
 
 	// Create a simple embedding (non-zero for search to work)
@@ -189,7 +188,7 @@ func TestSearch(t *testing.T) {
 }
 
 func TestSearchByType(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	t.Cleanup(func() { cleanupFacts(t) })
 
 	// Create embeddings
