@@ -429,9 +429,11 @@ func pointToFact(point *pb.RetrievedPoint) (entities.Fact, error) {
 
 	payload := point.Payload
 	var embedding []float32
-	if vec := point.Vectors.GetVector(); vec != nil {
-		if dense := vec.GetDense(); dense != nil {
-			embedding = dense.Data
+	if point.Vectors != nil {
+		if vec := point.Vectors.GetVector(); vec != nil {
+			if dense := vec.GetDense(); dense != nil {
+				embedding = dense.Data
+			}
 		}
 	}
 
@@ -463,9 +465,11 @@ func scoredPointsToFacts(points []*pb.ScoredPoint) ([]entities.Fact, error) {
 
 		payload := point.Payload
 		var embedding []float32
-		if vec := point.Vectors.GetVector(); vec != nil {
-			if dense := vec.GetDense(); dense != nil {
-				embedding = dense.Data
+		if point.Vectors != nil {
+			if vec := point.Vectors.GetVector(); vec != nil {
+				if dense := vec.GetDense(); dense != nil {
+					embedding = dense.Data
+				}
 			}
 		}
 

@@ -18,6 +18,13 @@ const (
 	DefaultConfigFile = "config.yaml"
 )
 
+var (
+	// reNonAlphanumeric matches characters that aren't alphanumeric or underscore.
+	reNonAlphanumeric = regexp.MustCompile(`[^a-z0-9_]`)
+	// reMultipleUnderscores matches consecutive underscores.
+	reMultipleUnderscores = regexp.MustCompile(`_+`)
+)
+
 // Config holds all configuration for lore-core.
 type Config struct {
 	LLM      LLMConfig              `mapstructure:"llm"`
@@ -188,12 +195,10 @@ func SanitizeWorldName(name string) string {
 	name = strings.ReplaceAll(name, "-", "_")
 
 	// Remove any characters that aren't alphanumeric or underscore
-	re := regexp.MustCompile(`[^a-z0-9_]`)
-	name = re.ReplaceAllString(name, "")
+	name = reNonAlphanumeric.ReplaceAllString(name, "")
 
 	// Remove consecutive underscores
-	re = regexp.MustCompile(`_+`)
-	name = re.ReplaceAllString(name, "_")
+	name = reMultipleUnderscores.ReplaceAllString(name, "_")
 
 	// Trim leading/trailing underscores
 	name = strings.Trim(name, "_")

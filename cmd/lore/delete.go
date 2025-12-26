@@ -14,9 +14,9 @@ import (
 )
 
 type deleteFlags struct {
-	source string
-	all    bool
-	force  bool
+	sourceFile string
+	all        bool
+	force      bool
 }
 
 type deleter struct {
@@ -36,7 +36,7 @@ func newDeleteCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&flags.source, "source", "s", "", "Delete all facts from source file")
+	cmd.Flags().StringVarP(&flags.sourceFile, "source", "s", "", "Delete all facts from source file")
 	cmd.Flags().BoolVarP(&flags.all, "all", "a", false, "Delete all facts")
 	cmd.Flags().BoolVarP(&flags.force, "force", "f", false, "Skip confirmation prompt")
 
@@ -69,8 +69,8 @@ func runDelete(cmd *cobra.Command, args []string, flags deleteFlags) error {
 	switch {
 	case flags.all:
 		return d.deleteAll(ctx)
-	case flags.source != "":
-		return d.deleteBySource(ctx, flags.source)
+	case flags.sourceFile != "":
+		return d.deleteBySource(ctx, flags.sourceFile)
 	case len(args) > 0:
 		return d.deleteByID(ctx, args[0])
 	default:

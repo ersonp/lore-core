@@ -121,7 +121,7 @@ func (e *exporter) export(facts []entities.Fact) error {
 	}
 
 	if e.output != "" {
-		if err := os.WriteFile(e.output, []byte(output), 0644); err != nil {
+		if err := os.WriteFile(e.output, []byte(output), 0600); err != nil {
 			return fmt.Errorf("writing file: %w", err)
 		}
 		fmt.Printf("Exported %d facts to %s\n", len(facts), e.output)

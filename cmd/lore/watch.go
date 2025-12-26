@@ -115,9 +115,9 @@ func (s *watchState) runInputLoop(ctx context.Context) error {
 		}
 
 		line := scanner.Text()
-		cmd := strings.ToLower(strings.TrimSpace(line))
+		input := strings.ToLower(strings.TrimSpace(line))
 
-		if handled, shouldExit := s.handleCommand(ctx, cmd, scanner); handled {
+		if handled, shouldExit := s.handleCommand(ctx, input, scanner); handled {
 			if shouldExit {
 				return nil
 			}
@@ -131,8 +131,8 @@ func (s *watchState) runInputLoop(ctx context.Context) error {
 }
 
 // handleCommand processes user commands. Returns (handled, shouldExit).
-func (s *watchState) handleCommand(ctx context.Context, cmd string, scanner *bufio.Scanner) (bool, bool) {
-	switch cmd {
+func (s *watchState) handleCommand(ctx context.Context, input string, scanner *bufio.Scanner) (bool, bool) {
+	switch input {
 	case "quit", "exit":
 		return true, s.handleQuit(scanner)
 	case "save":

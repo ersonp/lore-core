@@ -253,7 +253,7 @@ func addWorldToConfig(basePath string, name string, world config.WorldConfig) er
 		return fmt.Errorf("marshaling config: %w", err)
 	}
 
-	if err := os.WriteFile(configPath, newData, 0644); err != nil {
+	if err := os.WriteFile(configPath, newData, 0600); err != nil {
 		return fmt.Errorf("writing config file: %w", err)
 	}
 
@@ -282,7 +282,7 @@ func removeWorldFromConfig(basePath string, name string) error {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
 
-	if err := os.WriteFile(configPath, newData, 0644); err != nil {
+	if err := os.WriteFile(configPath, newData, 0600); err != nil {
 		return fmt.Errorf("writing config file: %w", err)
 	}
 
