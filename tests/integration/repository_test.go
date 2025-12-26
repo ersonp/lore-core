@@ -238,7 +238,7 @@ func TestEnsureCollection_ExistingWithDifferentVectorSize(t *testing.T) {
 
 	// The collection was created with embedder.VectorSize in TestMain.
 	// Calling EnsureCollection with a different size should succeed (no-op).
-	differentSize := uint64(128) // Different from embedder.VectorSize (3072)
+	differentSize := uint64(128) // Different from embedder.VectorSize (1536)
 	err := testRepo.EnsureCollection(ctx, differentSize)
 	require.NoError(t, err, "EnsureCollection should be no-op for existing collection")
 

@@ -101,17 +101,20 @@ func (e *exporter) fetchFacts(ctx context.Context, factType, sourceFile string, 
 	return facts, nil
 }
 
-func (e *exporter) export(facts []entities.Fact) error {
+func (e *exporter) export(facts []entities.Fact) (err error) {
 	var w io.Writer
 	var f *os.File
 
 	if e.output != "" {
-		var err error
-		f, err = os.OpenFile(e.output, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+		f, err = os.OpenFile(e.output, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 		if err != nil {
 			return fmt.Errorf("creating file: %w", err)
 		}
-		defer f.Close()
+		defer func() {
+			if cerr := f.Close(); cerr != nil && err == nil {
+				err = fmt.Errorf("closing file: %w", cerr)
+			}
+		}()
 		w = f
 	} else {
 		w = os.Stdout

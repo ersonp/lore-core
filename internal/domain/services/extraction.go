@@ -154,6 +154,12 @@ func (c *streamChunker) addParagraphToChunk(para string, processChunk func(strin
 		overlap := getOverlapText(c.currentChunk.String(), DefaultChunkOverlap)
 		c.currentChunk.Reset()
 		c.currentChunk.WriteString(overlap)
+
+		// Add the paragraph that triggered the overflow to the new chunk
+		if c.currentChunk.Len() > 0 {
+			c.currentChunk.WriteString("\n\n")
+		}
+		c.currentChunk.WriteString(para)
 		return true, nil
 	}
 
@@ -316,8 +322,7 @@ func (s *ExtractionService) checkConsistency(ctx context.Context, newFacts []ent
 	// Step 2: Single batched LLM call for all facts
 	issues, err := s.llm.CheckConsistency(ctx, newFacts, allSimilarFacts)
 	if err != nil {
-		// Log warning but don't fail - consistency check is advisory
-		return nil, nil
+		return nil, fmt.Errorf("LLM consistency check: %w", err)
 	}
 
 	return issues, nil
