@@ -3,13 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/ersonp/lore-core/internal/application/handlers"
 	"github.com/ersonp/lore-core/internal/domain/ports"
-	"github.com/ersonp/lore-core/internal/infrastructure/config"
 )
 
 type ingestFlags struct {
@@ -43,37 +41,18 @@ func newIngestCmd() *cobra.Command {
 func runIngest(cmd *cobra.Command, path string, flags ingestFlags) error {
 	ctx := cmd.Context()
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("getting current directory: %w", err)
-	}
+	return withDeps(func(d *Deps) error {
+		opts := handlers.IngestOptions{
+			CheckConsistency: flags.check || flags.checkOnly,
+			CheckOnly:        flags.checkOnly,
+		}
 
-	cfg, err := config.Load(cwd)
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
-	}
+		if handlers.IsDirectory(path) {
+			return runIngestDirectory(ctx, d.IngestHandler, path, flags.pattern, flags.recursive, opts)
+		}
 
-	worlds, err := config.LoadWorlds(cwd)
-	if err != nil {
-		return fmt.Errorf("loading worlds: %w", err)
-	}
-
-	ingestHandler, _, repo, err := buildDependencies(cfg, worlds, globalWorld)
-	if err != nil {
-		return err
-	}
-	defer repo.Close()
-
-	opts := handlers.IngestOptions{
-		CheckConsistency: flags.check || flags.checkOnly,
-		CheckOnly:        flags.checkOnly,
-	}
-
-	if handlers.IsDirectory(path) {
-		return runIngestDirectory(ctx, ingestHandler, path, flags.pattern, flags.recursive, opts)
-	}
-
-	return runIngestFile(ctx, ingestHandler, path, opts)
+		return runIngestFile(ctx, d.IngestHandler, path, opts)
+	})
 }
 
 func runIngestFile(ctx context.Context, handler *handlers.IngestHandler, filePath string, opts handlers.IngestOptions) error {

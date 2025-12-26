@@ -12,7 +12,7 @@ import (
 
 	"github.com/ersonp/lore-core/internal/domain/entities"
 	"github.com/ersonp/lore-core/internal/domain/ports"
-	"github.com/ersonp/lore-core/internal/infrastructure/config"
+	"github.com/ersonp/lore-core/internal/infrastructure/vectordb/qdrant"
 )
 
 type exportFlags struct {
@@ -59,40 +59,22 @@ func runExport(cmd *cobra.Command, flags exportFlags) error {
 		return fmt.Errorf("invalid type %q, valid types: %v", flags.factType, validTypes)
 	}
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("getting current directory: %w", err)
-	}
-
-	cfg, err := config.Load(cwd)
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
-	}
-
-	worlds, err := config.LoadWorlds(cwd)
-	if err != nil {
-		return fmt.Errorf("loading worlds: %w", err)
-	}
-
-	_, _, repo, err := buildDependencies(cfg, worlds, globalWorld)
-	if err != nil {
-		return err
-	}
-	defer repo.Close()
-
-	e := &exporter{
-		repo:   repo,
-		format: flags.format,
-		output: flags.output,
-	}
-
 	ctx := cmd.Context()
-	facts, err := e.fetchFacts(ctx, flags.factType, flags.sourceFile, flags.limit)
-	if err != nil {
-		return err
-	}
 
-	return e.export(facts)
+	return withRepo(func(repo *qdrant.Repository) error {
+		e := &exporter{
+			repo:   repo,
+			format: flags.format,
+			output: flags.output,
+		}
+
+		facts, err := e.fetchFacts(ctx, flags.factType, flags.sourceFile, flags.limit)
+		if err != nil {
+			return err
+		}
+
+		return e.export(facts)
+	})
 }
 
 func (e *exporter) fetchFacts(ctx context.Context, factType, sourceFile string, limit int) ([]entities.Fact, error) {
