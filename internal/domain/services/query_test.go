@@ -1,7 +1,6 @@
 package services
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -34,7 +33,7 @@ func TestQueryService_Search(t *testing.T) {
 
 	svc := NewQueryService(emb, db)
 
-	result, err := svc.Search(context.Background(), "What color are Frodo's eyes?", 10)
+	result, err := svc.Search(t.Context(), "What color are Frodo's eyes?", 10)
 	require.NoError(t, err)
 	assert.Len(t, result, 2)
 }
@@ -62,7 +61,7 @@ func TestQueryService_SearchByType(t *testing.T) {
 
 	svc := NewQueryService(emb, db)
 
-	result, err := svc.SearchByType(context.Background(), "characters", entities.FactTypeCharacter, 10)
+	result, err := svc.SearchByType(t.Context(), "characters", entities.FactTypeCharacter, 10)
 	require.NoError(t, err)
 	assert.Len(t, result, 1)
 	assert.Equal(t, "Frodo", result[0].Subject)
@@ -74,6 +73,6 @@ func TestQueryService_DefaultLimit(t *testing.T) {
 
 	svc := NewQueryService(emb, db)
 
-	_, err := svc.Search(context.Background(), "test", 0)
+	_, err := svc.Search(t.Context(), "test", 0)
 	require.NoError(t, err)
 }

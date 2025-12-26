@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -49,7 +48,7 @@ func TestIngestHandler_Handle(t *testing.T) {
 	svc := services.NewExtractionService(llm, emb, db)
 	handler := NewIngestHandler(svc)
 
-	result, err := handler.Handle(context.Background(), testFile)
+	result, err := handler.Handle(t.Context(), testFile)
 
 	require.NoError(t, err)
 	assert.Equal(t, testFile, result.FilePath)
@@ -82,7 +81,7 @@ func TestIngestHandler_HandleWithOptions_CheckOnly(t *testing.T) {
 	handler := NewIngestHandler(svc)
 
 	opts := IngestOptions{CheckOnly: true}
-	result, err := handler.HandleWithOptions(context.Background(), testFile, opts)
+	result, err := handler.HandleWithOptions(t.Context(), testFile, opts)
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.FactsCount)
@@ -98,7 +97,7 @@ func TestIngestHandler_Handle_FileNotFound(t *testing.T) {
 	svc := services.NewExtractionService(llm, emb, db)
 	handler := NewIngestHandler(svc)
 
-	_, err := handler.Handle(context.Background(), "/nonexistent/file.txt")
+	_, err := handler.Handle(t.Context(), "/nonexistent/file.txt")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "accessing file")
@@ -114,7 +113,7 @@ func TestIngestHandler_Handle_Directory(t *testing.T) {
 	svc := services.NewExtractionService(llm, emb, db)
 	handler := NewIngestHandler(svc)
 
-	_, err := handler.Handle(context.Background(), tmpDir)
+	_, err := handler.Handle(t.Context(), tmpDir)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "directory")
@@ -151,7 +150,7 @@ func TestIngestHandler_HandleDirectory(t *testing.T) {
 		progressFiles = append(progressFiles, file)
 	}
 
-	result, err := handler.HandleDirectory(context.Background(), tmpDir, "*.txt", false, progressFn)
+	result, err := handler.HandleDirectory(t.Context(), tmpDir, "*.txt", false, progressFn)
 
 	require.NoError(t, err)
 	assert.Equal(t, 2, result.TotalFiles)
@@ -171,7 +170,7 @@ func TestIngestHandler_HandleDirectory_NoMatches(t *testing.T) {
 	svc := services.NewExtractionService(llm, emb, db)
 	handler := NewIngestHandler(svc)
 
-	_, err = handler.HandleDirectory(context.Background(), tmpDir, "*.txt", false, nil)
+	_, err = handler.HandleDirectory(t.Context(), tmpDir, "*.txt", false, nil)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no files matching")
@@ -190,7 +189,7 @@ func TestIngestHandler_HandleDirectory_NotDirectory(t *testing.T) {
 	svc := services.NewExtractionService(llm, emb, db)
 	handler := NewIngestHandler(svc)
 
-	_, err = handler.HandleDirectory(context.Background(), testFile, "*.txt", false, nil)
+	_, err = handler.HandleDirectory(t.Context(), testFile, "*.txt", false, nil)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not a directory")

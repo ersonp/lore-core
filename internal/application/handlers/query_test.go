@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,7 +27,7 @@ func TestQueryHandler_Handle(t *testing.T) {
 	queryService := services.NewQueryService(emb, db)
 	handler := NewQueryHandler(queryService)
 
-	result, err := handler.Handle(context.Background(), "Who is brave?", 10)
+	result, err := handler.Handle(t.Context(), "Who is brave?", 10)
 	require.NoError(t, err)
 	assert.Equal(t, "Who is brave?", result.Query)
 	assert.Len(t, result.Facts, 1)
@@ -41,7 +40,7 @@ func TestQueryHandler_Handle_NoResults(t *testing.T) {
 	queryService := services.NewQueryService(emb, db)
 	handler := NewQueryHandler(queryService)
 
-	result, err := handler.Handle(context.Background(), "Unknown query", 10)
+	result, err := handler.Handle(t.Context(), "Unknown query", 10)
 	require.NoError(t, err)
 	assert.Empty(t, result.Facts)
 }
@@ -69,7 +68,7 @@ func TestQueryHandler_HandleByType(t *testing.T) {
 	queryService := services.NewQueryService(emb, db)
 	handler := NewQueryHandler(queryService)
 
-	result, err := handler.HandleByType(context.Background(), "characters", entities.FactTypeCharacter, 10)
+	result, err := handler.HandleByType(t.Context(), "characters", entities.FactTypeCharacter, 10)
 	require.NoError(t, err)
 	assert.Len(t, result.Facts, 1)
 	assert.Equal(t, entities.FactTypeCharacter, result.Facts[0].Type)
