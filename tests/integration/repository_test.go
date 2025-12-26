@@ -225,3 +225,48 @@ func TestList(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, listed, 2)
 }
+
+func TestEnsureCollection_ExistingWithDifferentVectorSize(t *testing.T) {
+	ctx := t.Context()
+
+	// Current behavior: EnsureCollection is a no-op if collection exists.
+	// It does NOT verify that the existing collection has the requested vector size.
+	// This is intentional - checking vector size on every call would add latency.
+	//
+	// If a mismatched vector size is used, the error will occur at Save/Search time
+	// when vectors don't match the collection's configured size.
+
+	// The collection was created with embedder.VectorSize in TestMain.
+	// Calling EnsureCollection with a different size should succeed (no-op).
+	differentSize := uint64(128) // Different from embedder.VectorSize (3072)
+	err := testRepo.EnsureCollection(ctx, differentSize)
+	require.NoError(t, err, "EnsureCollection should be no-op for existing collection")
+
+	// Verify the collection still works with original vector size
+	fact := entities.Fact{
+		ID:        uuid.New().String(),
+		Type:      entities.FactTypeCharacter,
+		Subject:   "Test",
+		Predicate: "is",
+		Object:    "working",
+		Embedding: make([]float32, embedder.VectorSize),
+	}
+	err = testRepo.Save(ctx, fact)
+	require.NoError(t, err, "Save should work with original vector size")
+
+	// Cleanup
+	err = testRepo.Delete(ctx, fact.ID)
+	require.NoError(t, err)
+
+	// Verify that saving with wrong vector size fails
+	wrongFact := entities.Fact{
+		ID:        uuid.New().String(),
+		Type:      entities.FactTypeCharacter,
+		Subject:   "Wrong",
+		Predicate: "vector",
+		Object:    "size",
+		Embedding: make([]float32, differentSize),
+	}
+	err = testRepo.Save(ctx, wrongFact)
+	require.Error(t, err, "Save should fail with mismatched vector size")
+}

@@ -9,6 +9,9 @@ import (
 // VectorDB defines the interface for vector database operations.
 type VectorDB interface {
 	// EnsureCollection creates the collection if it doesn't exist.
+	// If the collection already exists, this is a no-op regardless of vectorSize.
+	// Callers must ensure consistent vector sizes across the application.
+	// Mismatched vector sizes will cause errors at Save/Search time.
 	EnsureCollection(ctx context.Context, vectorSize uint64) error
 
 	// DeleteCollection removes the collection and all its data.
