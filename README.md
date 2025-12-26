@@ -137,6 +137,21 @@ make lint
 make check
 ```
 
+### Integration Tests
+
+Integration tests require a running Qdrant instance:
+
+```bash
+# Start Qdrant
+docker compose -f docker-compose.test.yml up -d
+
+# Run integration tests
+make test-integration
+
+# Stop Qdrant
+docker compose -f docker-compose.test.yml down
+```
+
 ## Contributing
 
 See [CLAUDE.md](CLAUDE.md) for coding guidelines.
