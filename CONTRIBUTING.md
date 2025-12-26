@@ -55,8 +55,8 @@ This runs format, vet, lint, and test.
 ### Title
 Same as commit header or descriptive title.
 
-### Description
-Summary of changes.
+### Changes
+Bullet points summarizing what changed.
 
 ### Testing
 Include ALL steps to test:
