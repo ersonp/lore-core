@@ -27,6 +27,7 @@ type Deps struct {
 type internalDeps struct {
 	Deps
 	repo              *qdrant.Repository
+	embedder          *embedder.Embedder
 	extractionService *services.ExtractionService
 }
 
@@ -95,6 +96,7 @@ func withInternalDeps(fn func(*internalDeps) error) error {
 			QueryHandler:  handlers.NewQueryHandler(queryService),
 		},
 		repo:              repo,
+		embedder:          emb,
 		extractionService: extractionService,
 	}
 

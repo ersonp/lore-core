@@ -2,6 +2,7 @@ package mocks
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ersonp/lore-core/internal/domain/entities"
 )
@@ -14,12 +15,14 @@ type VectorDB struct {
 	// Collection errors (separate from Err for fine-grained control)
 	EnsureCollectionErr error
 	DeleteCollectionErr error
+	FindByIDErr         error // Error to return when fact is not found
 
 	// Call tracking
 	SaveBatchCallCount        int
 	SaveBatchLastFacts        []entities.Fact
 	EnsureCollectionCallCount int
 	DeleteCollectionCallCount int
+	FindByIDCallCount         int
 }
 
 // EnsureCollection creates the collection if it doesn't exist.
@@ -48,6 +51,7 @@ func (m *VectorDB) SaveBatch(ctx context.Context, facts []entities.Fact) error {
 
 // FindByID retrieves a fact by ID.
 func (m *VectorDB) FindByID(ctx context.Context, id string) (entities.Fact, error) {
+	m.FindByIDCallCount++
 	if m.Err != nil {
 		return entities.Fact{}, m.Err
 	}
@@ -56,7 +60,11 @@ func (m *VectorDB) FindByID(ctx context.Context, id string) (entities.Fact, erro
 			return f, nil
 		}
 	}
-	return entities.Fact{}, nil
+	// Return FindByIDErr when fact not found (mimics real behavior)
+	if m.FindByIDErr != nil {
+		return entities.Fact{}, m.FindByIDErr
+	}
+	return entities.Fact{}, fmt.Errorf("fact not found: %s", id)
 }
 
 // Search finds facts by embedding similarity.
