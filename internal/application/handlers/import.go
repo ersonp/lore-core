@@ -23,9 +23,9 @@ func NewImportHandler(service *services.ImportService) *ImportHandler {
 
 // ImportOptions controls import behavior.
 type ImportOptions struct {
-	Format     string // "json", "csv", or "auto"
-	DryRun     bool   // Validate without saving
-	OnConflict string // "skip" or "overwrite"
+	Format     string                    // "json", "csv", or "auto"
+	DryRun     bool                      // Validate without saving
+	OnConflict services.ConflictStrategy // How to handle existing facts
 }
 
 // ImportResult contains the result of an import operation.

@@ -21,7 +21,7 @@ func TestImportService_Import_ValidFacts(t *testing.T) {
 		{Type: "character", Subject: "Gandalf", Predicate: "is a", Object: "wizard"},
 	}
 
-	result, err := service.Import(context.Background(), rawFacts, ImportOptions{OnConflict: "overwrite"})
+	result, err := service.Import(context.Background(), rawFacts, ImportOptions{OnConflict: ConflictOverwrite})
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.Imported)
@@ -40,7 +40,7 @@ func TestImportService_Import_ValidationErrors(t *testing.T) {
 		{Type: "character", Subject: "", Predicate: "is", Object: "wizard"},
 	}
 
-	result, err := service.Import(context.Background(), rawFacts, ImportOptions{OnConflict: "overwrite"})
+	result, err := service.Import(context.Background(), rawFacts, ImportOptions{OnConflict: ConflictOverwrite})
 
 	require.NoError(t, err)
 	assert.Equal(t, 0, result.Imported)
@@ -58,7 +58,7 @@ func TestImportService_Import_InvalidFactType(t *testing.T) {
 		{Type: "invalid_type", Subject: "Gandalf", Predicate: "is", Object: "wizard"},
 	}
 
-	result, err := service.Import(context.Background(), rawFacts, ImportOptions{OnConflict: "overwrite"})
+	result, err := service.Import(context.Background(), rawFacts, ImportOptions{OnConflict: ConflictOverwrite})
 
 	require.NoError(t, err)
 	assert.Equal(t, 0, result.Imported)
@@ -76,7 +76,7 @@ func TestImportService_Import_InvalidConfidence(t *testing.T) {
 		{Type: "character", Subject: "Gandalf", Predicate: "is", Object: "wizard", Confidence: 1.5},
 	}
 
-	result, err := service.Import(context.Background(), rawFacts, ImportOptions{OnConflict: "overwrite"})
+	result, err := service.Import(context.Background(), rawFacts, ImportOptions{OnConflict: ConflictOverwrite})
 
 	require.NoError(t, err)
 	assert.Equal(t, 0, result.Imported)
@@ -112,7 +112,7 @@ func TestImportService_Import_SkipExisting(t *testing.T) {
 		{ID: "new-id", Type: "character", Subject: "Frodo", Predicate: "is", Object: "hobbit"},
 	}
 
-	result, err := service.Import(context.Background(), rawFacts, ImportOptions{OnConflict: "skip"})
+	result, err := service.Import(context.Background(), rawFacts, ImportOptions{OnConflict: ConflictSkip})
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.Imported)
@@ -141,7 +141,7 @@ func TestImportService_Import_EmbeddingError(t *testing.T) {
 		{Type: "character", Subject: "Gandalf", Predicate: "is", Object: "wizard"},
 	}
 
-	_, err := service.Import(context.Background(), rawFacts, ImportOptions{OnConflict: "overwrite"})
+	_, err := service.Import(context.Background(), rawFacts, ImportOptions{OnConflict: ConflictOverwrite})
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "generating embeddings")
@@ -156,7 +156,7 @@ func TestImportService_Import_SaveError(t *testing.T) {
 		{Type: "character", Subject: "Gandalf", Predicate: "is", Object: "wizard"},
 	}
 
-	_, err := service.Import(context.Background(), rawFacts, ImportOptions{OnConflict: "overwrite"})
+	_, err := service.Import(context.Background(), rawFacts, ImportOptions{OnConflict: ConflictOverwrite})
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "saving facts")

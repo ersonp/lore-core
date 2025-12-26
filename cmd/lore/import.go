@@ -36,9 +36,10 @@ func newImportCmd() *cobra.Command {
 }
 
 func runImport(cmd *cobra.Command, filePath string, flags importFlags) error {
-	// Validate on-conflict flag
-	if flags.onConflict != "skip" && flags.onConflict != "overwrite" {
-		return fmt.Errorf("invalid --on-conflict value %q (valid: skip, overwrite)", flags.onConflict)
+	// Parse and validate on-conflict flag
+	strategy, err := parseConflictStrategy(flags.onConflict)
+	if err != nil {
+		return err
 	}
 
 	ctx := cmd.Context()
@@ -47,7 +48,7 @@ func runImport(cmd *cobra.Command, filePath string, flags importFlags) error {
 		opts := handlers.ImportOptions{
 			Format:     flags.format,
 			DryRun:     flags.dryRun,
-			OnConflict: flags.onConflict,
+			OnConflict: strategy,
 		}
 
 		fmt.Printf("Importing %s...\n", filePath)
@@ -85,6 +86,18 @@ func runImport(cmd *cobra.Command, filePath string, flags importFlags) error {
 
 		return nil
 	})
+}
+
+// parseConflictStrategy converts a string to ConflictStrategy.
+func parseConflictStrategy(s string) (services.ConflictStrategy, error) {
+	switch s {
+	case string(services.ConflictSkip):
+		return services.ConflictSkip, nil
+	case string(services.ConflictOverwrite):
+		return services.ConflictOverwrite, nil
+	default:
+		return "", fmt.Errorf("invalid --on-conflict value %q (valid: skip, overwrite)", s)
+	}
 }
 
 // withImportHandler creates an ImportHandler and calls the provided function.

@@ -12,10 +12,20 @@ import (
 	"github.com/ersonp/lore-core/internal/infrastructure/parsers"
 )
 
+// ConflictStrategy defines how to handle existing facts during import.
+type ConflictStrategy string
+
+const (
+	// ConflictSkip skips facts that already exist (by ID).
+	ConflictSkip ConflictStrategy = "skip"
+	// ConflictOverwrite overwrites existing facts with new data.
+	ConflictOverwrite ConflictStrategy = "overwrite"
+)
+
 // ImportOptions controls import behavior.
 type ImportOptions struct {
-	DryRun     bool   // Validate without saving
-	OnConflict string // "skip" or "overwrite"
+	DryRun     bool             // Validate without saving
+	OnConflict ConflictStrategy // How to handle existing facts
 }
 
 // ImportError represents an error for a specific fact during import.
@@ -221,8 +231,8 @@ func (s *ImportService) generateEmbeddings(ctx context.Context, facts []entities
 }
 
 // saveWithConflictHandling saves facts with conflict handling.
-func (s *ImportService) saveWithConflictHandling(ctx context.Context, facts []entities.Fact, onConflict string) (imported, skipped int, err error) {
-	if onConflict != "skip" {
+func (s *ImportService) saveWithConflictHandling(ctx context.Context, facts []entities.Fact, onConflict ConflictStrategy) (imported, skipped int, err error) {
+	if onConflict != ConflictSkip {
 		// Default: overwrite (upsert)
 		if err := s.vectorDB.SaveBatch(ctx, facts); err != nil {
 			return 0, 0, err
