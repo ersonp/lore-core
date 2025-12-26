@@ -120,31 +120,40 @@ func (s *ExtractionService) ExtractAndStoreWithOptions(ctx context.Context, text
 }
 
 // checkConsistency checks new facts against existing facts for contradictions.
+// Uses batched LLM call for efficiency - collects all similar facts first,
+// then makes a single LLM call instead of one per fact.
 func (s *ExtractionService) checkConsistency(ctx context.Context, newFacts []entities.Fact) ([]ports.ConsistencyIssue, error) {
-	var allIssues []ports.ConsistencyIssue
+	// Step 1: Collect all similar facts from DB (fast calls)
+	var allSimilarFacts []entities.Fact
+	seenIDs := make(map[string]bool)
 
 	for _, fact := range newFacts {
-		// Search for similar existing facts of the same type
 		similarFacts, err := s.vectorDB.SearchByType(ctx, fact.Embedding, fact.Type, 5)
 		if err != nil {
 			return nil, fmt.Errorf("searching similar facts: %w", err)
 		}
 
-		if len(similarFacts) == 0 {
-			continue
+		// Deduplicate similar facts
+		for _, sf := range similarFacts {
+			if !seenIDs[sf.ID] {
+				seenIDs[sf.ID] = true
+				allSimilarFacts = append(allSimilarFacts, sf)
+			}
 		}
-
-		// Check consistency with LLM
-		issues, err := s.llm.CheckConsistency(ctx, []entities.Fact{fact}, similarFacts)
-		if err != nil {
-			// Log warning but continue - don't fail the whole operation
-			continue
-		}
-
-		allIssues = append(allIssues, issues...)
 	}
 
-	return allIssues, nil
+	if len(allSimilarFacts) == 0 {
+		return nil, nil
+	}
+
+	// Step 2: Single batched LLM call for all facts
+	issues, err := s.llm.CheckConsistency(ctx, newFacts, allSimilarFacts)
+	if err != nil {
+		// Log warning but don't fail - consistency check is advisory
+		return nil, nil
+	}
+
+	return issues, nil
 }
 
 // ChunkText splits text into chunks with overlap.
