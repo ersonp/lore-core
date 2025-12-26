@@ -10,6 +10,9 @@ import (
 type VectorDB struct {
 	Facts []entities.Fact
 	Err   error
+
+	// Call tracking
+	SaveBatchCallCount int
 }
 
 // Save stores a single fact.
@@ -19,6 +22,7 @@ func (m *VectorDB) Save(ctx context.Context, fact entities.Fact) error {
 
 // SaveBatch stores multiple facts.
 func (m *VectorDB) SaveBatch(ctx context.Context, facts []entities.Fact) error {
+	m.SaveBatchCallCount++
 	return m.Err
 }
 

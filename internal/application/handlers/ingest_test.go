@@ -86,7 +86,7 @@ func TestIngestHandler_HandleWithOptions_CheckOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.FactsCount)
 	// In check-only mode, facts are extracted but not saved
-	// db.SaveBatch should not be called (we can't verify this without call tracking)
+	assert.Equal(t, 0, db.SaveBatchCallCount, "SaveBatch should not be called in check-only mode")
 }
 
 func TestIngestHandler_Handle_FileNotFound(t *testing.T) {
