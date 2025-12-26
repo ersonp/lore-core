@@ -1,8 +1,8 @@
 .PHONY: format lint test vet build clean check
 
-# Format all Go files with goimports
+# Format all Go files with goimports (excluding vendor)
 format:
-	goimports -w .
+	find . -name '*.go' -not -path './vendor/*' | xargs goimports -w
 
 # Run golangci-lint
 lint:

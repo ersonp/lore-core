@@ -18,7 +18,10 @@ import (
 	"github.com/ersonp/lore-core/internal/infrastructure/vectordb/qdrant"
 )
 
-var version = "0.1.0-dev"
+var (
+	version     = "0.1.0-dev"
+	globalWorld string
+)
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -33,26 +36,40 @@ func main() {
 func run(ctx context.Context) error {
 	rootCmd := &cobra.Command{
 		Use:     "lore",
-		Short:   "A factual consistency database for fictional worlds",
+		Short:   "A factual knowledge base powered by vector search and LLM analysis",
 		Version: version,
 	}
 
+	rootCmd.PersistentFlags().StringVarP(&globalWorld, "world", "w", "", "World to operate on (required)")
+
 	rootCmd.AddCommand(
-		newInitCmd(),
 		newIngestCmd(),
 		newQueryCmd(),
 		newListCmd(),
 		newDeleteCmd(),
 		newExportCmd(),
 		newWatchCmd(),
+		newWorldsCmd(),
 	)
 
 	return rootCmd.ExecuteContext(ctx)
 }
 
-// buildDependencies creates all dependencies from config.
-func buildDependencies(cfg *config.Config) (*handlers.IngestHandler, *handlers.QueryHandler, *qdrant.Repository, error) {
-	repo, err := qdrant.NewRepository(cfg.Qdrant)
+// buildDependencies creates all dependencies from config for a specific world.
+func buildDependencies(cfg *config.Config, worlds *config.WorldsConfig, world string) (*handlers.IngestHandler, *handlers.QueryHandler, *qdrant.Repository, error) {
+	if world == "" {
+		return nil, nil, nil, fmt.Errorf("world is required (use --world flag)")
+	}
+
+	collection, err := worlds.GetCollection(world)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	qdrantCfg := cfg.Qdrant
+	qdrantCfg.Collection = collection
+
+	repo, err := qdrant.NewRepository(qdrantCfg)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("creating qdrant repository: %w", err)
 	}

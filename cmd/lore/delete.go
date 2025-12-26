@@ -2,39 +2,48 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/ersonp/lore-core/internal/domain/ports"
 	"github.com/ersonp/lore-core/internal/infrastructure/config"
 )
 
-var (
-	deleteSource string
-	deleteAll    bool
-	deleteForce  bool
-)
+type deleteFlags struct {
+	sourceFile string
+	all        bool
+	force      bool
+}
+
+type deleter struct {
+	repo  ports.VectorDB
+	force bool
+}
 
 func newDeleteCmd() *cobra.Command {
+	var flags deleteFlags
+
 	cmd := &cobra.Command{
 		Use:   "delete [fact-id]",
 		Short: "Delete facts",
 		Long:  "Deletes facts by ID, source file, or all facts.",
-		RunE:  runDelete,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runDelete(cmd, args, flags)
+		},
 	}
 
-	cmd.Flags().StringVarP(&deleteSource, "source", "s", "", "Delete all facts from source file")
-	cmd.Flags().BoolVarP(&deleteAll, "all", "a", false, "Delete all facts")
-	cmd.Flags().BoolVarP(&deleteForce, "force", "f", false, "Skip confirmation prompt")
+	cmd.Flags().StringVarP(&flags.sourceFile, "source", "s", "", "Delete all facts from source file")
+	cmd.Flags().BoolVarP(&flags.all, "all", "a", false, "Delete all facts")
+	cmd.Flags().BoolVarP(&flags.force, "force", "f", false, "Skip confirmation prompt")
 
 	return cmd
 }
 
-func runDelete(cmd *cobra.Command, args []string) error {
-	ctx := cmd.Context()
-
+func runDelete(cmd *cobra.Command, args []string, flags deleteFlags) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("getting current directory: %w", err)
@@ -45,61 +54,94 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	_, _, repo, err := buildDependencies(cfg)
+	worlds, err := config.LoadWorlds(cwd)
+	if err != nil {
+		return fmt.Errorf("loading worlds: %w", err)
+	}
+
+	_, _, repo, err := buildDependencies(cfg, worlds, globalWorld)
 	if err != nil {
 		return err
 	}
 	defer repo.Close()
 
+	d := &deleter{
+		repo:  repo,
+		force: flags.force,
+	}
+
+	ctx := cmd.Context()
 	switch {
-	case deleteAll:
-		if !deleteForce {
-			count, _ := repo.Count(ctx)
-			if !confirmAction(fmt.Sprintf("Delete all %d facts?", count)) {
-				fmt.Println("Cancelled.")
-				return nil
-			}
-		}
-		if err := repo.DeleteAll(ctx); err != nil {
-			return fmt.Errorf("deleting all facts: %w", err)
-		}
-		fmt.Println("All facts deleted.")
-
-	case deleteSource != "":
-		facts, _ := repo.ListBySource(ctx, deleteSource, 1000)
-		if len(facts) == 0 {
-			fmt.Printf("No facts found from source: %s\n", deleteSource)
-			return nil
-		}
-		if !deleteForce {
-			if !confirmAction(fmt.Sprintf("Delete %d facts from %s?", len(facts), deleteSource)) {
-				fmt.Println("Cancelled.")
-				return nil
-			}
-		}
-		if err := repo.DeleteBySource(ctx, deleteSource); err != nil {
-			return fmt.Errorf("deleting facts by source: %w", err)
-		}
-		fmt.Printf("Deleted %d facts from %s\n", len(facts), deleteSource)
-
+	case flags.all:
+		return d.deleteAll(ctx)
+	case flags.sourceFile != "":
+		return d.deleteBySource(ctx, flags.sourceFile)
 	case len(args) > 0:
-		factID := args[0]
-		if err := repo.Delete(ctx, factID); err != nil {
-			return fmt.Errorf("deleting fact: %w", err)
-		}
-		fmt.Printf("Deleted fact: %s\n", factID)
-
+		return d.deleteByID(ctx, args[0])
 	default:
 		return fmt.Errorf("specify a fact ID, --source, or --all")
 	}
+}
 
+func (d *deleter) deleteAll(ctx context.Context) error {
+	if !d.force {
+		prompt := d.buildDeleteAllPrompt(ctx)
+		if !confirmAction(prompt) {
+			fmt.Println("Cancelled.")
+			return nil
+		}
+	}
+
+	if err := d.repo.DeleteAll(ctx); err != nil {
+		return fmt.Errorf("deleting all facts: %w", err)
+	}
+	fmt.Println("All facts deleted.")
+	return nil
+}
+
+func (d *deleter) buildDeleteAllPrompt(ctx context.Context) string {
+	count, err := d.repo.Count(ctx)
+	if err != nil {
+		return "Delete all facts?"
+	}
+	return fmt.Sprintf("Delete all %d facts?", count)
+}
+
+func (d *deleter) deleteBySource(ctx context.Context, sourceFile string) error {
+	facts, err := d.repo.ListBySource(ctx, sourceFile, MaxDeleteBatchSize)
+	if err != nil {
+		return fmt.Errorf("listing facts by source: %w", err)
+	}
+
+	if len(facts) == 0 {
+		fmt.Printf("No facts found from source: %s\n", sourceFile)
+		return nil
+	}
+
+	if !d.force && !confirmAction(fmt.Sprintf("Delete %d facts from %s?", len(facts), sourceFile)) {
+		fmt.Println("Cancelled.")
+		return nil
+	}
+
+	if err := d.repo.DeleteBySource(ctx, sourceFile); err != nil {
+		return fmt.Errorf("deleting facts by source: %w", err)
+	}
+	fmt.Printf("Deleted %d facts from %s\n", len(facts), sourceFile)
+	return nil
+}
+
+func (d *deleter) deleteByID(ctx context.Context, factID string) error {
+	if err := d.repo.Delete(ctx, factID); err != nil {
+		return fmt.Errorf("deleting fact: %w", err)
+	}
+	fmt.Printf("Deleted fact: %s\n", factID)
 	return nil
 }
 
 func confirmAction(prompt string) bool {
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Printf("%s [y/N]: ", prompt)
-	response, _ := reader.ReadString('\n')
+	response, _ := reader.ReadString('\n') // Error ignored: EOF/error treated as "no"
 	response = strings.TrimSpace(strings.ToLower(response))
 	return response == "y" || response == "yes"
 }

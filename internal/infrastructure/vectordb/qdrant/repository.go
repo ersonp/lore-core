@@ -393,6 +393,18 @@ func (r *Repository) Count(ctx context.Context) (uint64, error) {
 	return *resp.Result.PointsCount, nil
 }
 
+// DeleteCollection removes the entire collection from Qdrant.
+func (r *Repository) DeleteCollection(ctx context.Context) error {
+	_, err := r.client.Delete(ctx, &pb.DeleteCollection{
+		CollectionName: r.collection,
+	})
+	if err != nil {
+		return fmt.Errorf("deleting collection: %w", err)
+	}
+
+	return nil
+}
+
 // retrievedPointsToFacts converts retrieved points to facts.
 func retrievedPointsToFacts(points []*pb.RetrievedPoint) ([]entities.Fact, error) {
 	facts := make([]entities.Fact, 0, len(points))
@@ -417,8 +429,12 @@ func pointToFact(point *pb.RetrievedPoint) (entities.Fact, error) {
 
 	payload := point.Payload
 	var embedding []float32
-	if vec := point.Vectors.GetVector(); vec != nil {
-		embedding = vec.Data
+	if point.Vectors != nil {
+		if vec := point.Vectors.GetVector(); vec != nil {
+			if dense := vec.GetDense(); dense != nil {
+				embedding = dense.Data
+			}
+		}
 	}
 
 	fact := entities.Fact{
@@ -449,8 +465,12 @@ func scoredPointsToFacts(points []*pb.ScoredPoint) ([]entities.Fact, error) {
 
 		payload := point.Payload
 		var embedding []float32
-		if vec := point.Vectors.GetVector(); vec != nil {
-			embedding = vec.Data
+		if point.Vectors != nil {
+			if vec := point.Vectors.GetVector(); vec != nil {
+				if dense := vec.GetDense(); dense != nil {
+					embedding = dense.Data
+				}
+			}
 		}
 
 		fact := entities.Fact{

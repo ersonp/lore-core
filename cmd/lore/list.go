@@ -10,28 +10,30 @@ import (
 	"github.com/ersonp/lore-core/internal/infrastructure/config"
 )
 
-var (
-	listLimit  int
-	listType   string
-	listSource string
-)
-
 func newListCmd() *cobra.Command {
+	var (
+		limit      int
+		factType   string
+		sourceFile string
+	)
+
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all facts",
 		Long:  "Lists all facts stored in the database with optional filtering.",
-		RunE:  runList,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runList(cmd, limit, factType, sourceFile)
+		},
 	}
 
-	cmd.Flags().IntVarP(&listLimit, "limit", "l", 50, "Maximum number of facts to display")
-	cmd.Flags().StringVarP(&listType, "type", "t", "", "Filter by fact type")
-	cmd.Flags().StringVarP(&listSource, "source", "s", "", "Filter by source file")
+	cmd.Flags().IntVarP(&limit, "limit", "l", DefaultListLimit, "Maximum number of facts to display")
+	cmd.Flags().StringVarP(&factType, "type", "t", "", "Filter by fact type")
+	cmd.Flags().StringVarP(&sourceFile, "source", "s", "", "Filter by source file")
 
 	return cmd
 }
 
-func runList(cmd *cobra.Command, args []string) error {
+func runList(cmd *cobra.Command, limit int, factType string, sourceFile string) error {
 	ctx := cmd.Context()
 
 	cwd, err := os.Getwd()
@@ -44,7 +46,12 @@ func runList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	_, _, repo, err := buildDependencies(cfg)
+	worlds, err := config.LoadWorlds(cwd)
+	if err != nil {
+		return fmt.Errorf("loading worlds: %w", err)
+	}
+
+	_, _, repo, err := buildDependencies(cfg, worlds, globalWorld)
 	if err != nil {
 		return err
 	}
@@ -53,15 +60,15 @@ func runList(cmd *cobra.Command, args []string) error {
 	var facts []entities.Fact
 
 	switch {
-	case listType != "":
-		if !isValidType(listType) {
-			return fmt.Errorf("invalid type %q, valid types: %v", listType, validTypes)
+	case factType != "":
+		if !isValidType(factType) {
+			return fmt.Errorf("invalid type %q, valid types: %v", factType, validTypes)
 		}
-		facts, err = repo.ListByType(ctx, entities.FactType(listType), listLimit)
-	case listSource != "":
-		facts, err = repo.ListBySource(ctx, listSource, listLimit)
+		facts, err = repo.ListByType(ctx, entities.FactType(factType), limit)
+	case sourceFile != "":
+		facts, err = repo.ListBySource(ctx, sourceFile, limit)
 	default:
-		facts, err = repo.List(ctx, listLimit, 0)
+		facts, err = repo.List(ctx, limit, 0)
 	}
 
 	if err != nil {
@@ -73,20 +80,31 @@ func runList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	count, _ := repo.Count(ctx)
-	fmt.Printf("Showing %d of %d facts:\n\n", len(facts), count)
+	count, _ := repo.Count(ctx) // Error handled in displayFacts
+	displayFacts(facts, count)
+	return nil
+}
 
-	for _, fact := range facts {
-		fmt.Printf("ID: %s\n", fact.ID)
-		fmt.Printf("  [%s] %s %s %s\n", fact.Type, fact.Subject, fact.Predicate, fact.Object)
-		if fact.Context != "" {
-			fmt.Printf("  Context: %s\n", fact.Context)
-		}
-		if fact.SourceFile != "" {
-			fmt.Printf("  Source: %s\n", fact.SourceFile)
-		}
-		fmt.Println()
+func displayFacts(facts []entities.Fact, totalCount uint64) {
+	if totalCount > 0 {
+		fmt.Printf("Showing %d of %d facts:\n\n", len(facts), totalCount)
+	} else {
+		fmt.Printf("Showing %d facts:\n\n", len(facts))
 	}
 
-	return nil
+	for _, fact := range facts {
+		displayFact(fact)
+	}
+}
+
+func displayFact(fact entities.Fact) {
+	fmt.Printf("ID: %s\n", fact.ID)
+	fmt.Printf("  [%s] %s %s %s\n", fact.Type, fact.Subject, fact.Predicate, fact.Object)
+	if fact.Context != "" {
+		fmt.Printf("  Context: %s\n", fact.Context)
+	}
+	if fact.SourceFile != "" {
+		fmt.Printf("  Source: %s\n", fact.SourceFile)
+	}
+	fmt.Println()
 }

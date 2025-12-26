@@ -1,0 +1,15 @@
+run:
+  modules-download-mode: vendor
+
+issues:
+  exclude-dirs:
+    - vendor
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
