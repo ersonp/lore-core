@@ -38,6 +38,7 @@ linters-settings:
       # Domain layer cannot import infrastructure
       domain-isolation:
         files:
+          - "**/internal/domain/*.go"
           - "**/internal/domain/**/*.go"
         deny:
           - pkg: "github.com/ersonp/lore-core/internal/infrastructure"
@@ -47,6 +48,7 @@ linters-settings:
       # Application layer cannot import cmd
       application-isolation:
         files:
+          - "**/internal/application/*.go"
           - "**/internal/application/**/*.go"
         deny:
           - pkg: "github.com/ersonp/lore-core/cmd"
