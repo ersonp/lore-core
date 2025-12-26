@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -16,6 +16,8 @@ const (
 	DefaultConfigDir = ".lore"
 	// DefaultConfigFile is the default config file name.
 	DefaultConfigFile = "config.yaml"
+	// DefaultWorldsFile is the default worlds file name.
+	DefaultWorldsFile = "worlds.yaml"
 )
 
 var (
@@ -25,40 +27,33 @@ var (
 	reMultipleUnderscores = regexp.MustCompile(`_+`)
 )
 
-// Config holds all configuration for lore-core.
+// Config holds static infrastructure configuration (read-only after init).
 type Config struct {
-	LLM      LLMConfig              `mapstructure:"llm"`
-	Embedder EmbedderConfig         `mapstructure:"embedder"`
-	Qdrant   QdrantConfig           `mapstructure:"qdrant"`
-	Worlds   map[string]WorldConfig `mapstructure:"worlds"`
-}
-
-// WorldConfig holds configuration for a specific world.
-type WorldConfig struct {
-	Collection  string `mapstructure:"collection"`
-	Description string `mapstructure:"description"`
+	LLM      LLMConfig      `yaml:"llm,omitempty"`
+	Embedder EmbedderConfig `yaml:"embedder,omitempty"`
+	Qdrant   QdrantConfig   `yaml:"qdrant,omitempty"`
 }
 
 // LLMConfig holds configuration for the LLM provider.
 type LLMConfig struct {
-	Provider string `mapstructure:"provider"`
-	Model    string `mapstructure:"model"`
-	APIKey   string `mapstructure:"api_key"`
+	Provider string `yaml:"provider,omitempty"`
+	Model    string `yaml:"model,omitempty"`
+	APIKey   string `yaml:"api_key,omitempty"`
 }
 
 // EmbedderConfig holds configuration for the embedding provider.
 type EmbedderConfig struct {
-	Provider string `mapstructure:"provider"`
-	Model    string `mapstructure:"model"`
-	APIKey   string `mapstructure:"api_key"`
+	Provider string `yaml:"provider,omitempty"`
+	Model    string `yaml:"model,omitempty"`
+	APIKey   string `yaml:"api_key,omitempty"`
 }
 
 // QdrantConfig holds configuration for the Qdrant vector database.
 type QdrantConfig struct {
-	Host       string `mapstructure:"host"`
-	Port       int    `mapstructure:"port"`
-	Collection string `mapstructure:"collection"`
-	APIKey     string `mapstructure:"api_key"`
+	Host       string `yaml:"host,omitempty"`
+	Port       int    `yaml:"port,omitempty"`
+	Collection string `yaml:"collection,omitempty"`
+	APIKey     string `yaml:"api_key,omitempty"`
 }
 
 // Default returns a Config with default values.
@@ -76,59 +71,32 @@ func Default() *Config {
 			Host: "localhost",
 			Port: 6334,
 		},
-		Worlds: map[string]WorldConfig{},
 	}
 }
 
 // Load loads configuration from the .lore directory in the given path.
 func Load(basePath string) (*Config, error) {
-	configPath := filepath.Join(basePath, DefaultConfigDir)
-	configFile := filepath.Join(configPath, DefaultConfigFile)
+	configFile := filepath.Join(basePath, DefaultConfigDir, DefaultConfigFile)
 
-	if _, err := os.Stat(configFile); os.IsNotExist(err) {
-		return nil, fmt.Errorf("config file not found: %s (run 'lore init' first)", configFile)
+	data, err := os.ReadFile(configFile)
+	if os.IsNotExist(err) {
+		return nil, fmt.Errorf("config file not found: %s (run 'lore worlds create' first)", configFile)
 	}
-
-	v := viper.New()
-	v.SetConfigFile(configFile)
-	v.SetConfigType("yaml")
-
-	// Set defaults
-	setDefaults(v)
-
-	// Bind environment variables
-	bindEnvVars(v)
-
-	if err := v.ReadInConfig(); err != nil {
+	if err != nil {
 		return nil, fmt.Errorf("reading config file: %w", err)
 	}
 
-	var cfg Config
-	if err := v.Unmarshal(&cfg); err != nil {
-		return nil, fmt.Errorf("unmarshaling config: %w", err)
+	// Start with defaults
+	cfg := Default()
+
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return nil, fmt.Errorf("parsing config file: %w", err)
 	}
 
-	// Override with environment variables if set
+	// Apply environment variable overrides
 	cfg.applyEnvOverrides()
 
-	return &cfg, nil
-}
-
-// setDefaults sets default values in viper.
-func setDefaults(v *viper.Viper) {
-	v.SetDefault("llm.provider", "openai")
-	v.SetDefault("llm.model", "gpt-4o-mini")
-	v.SetDefault("embedder.provider", "openai")
-	v.SetDefault("embedder.model", "text-embedding-3-small")
-	v.SetDefault("qdrant.host", "localhost")
-	v.SetDefault("qdrant.port", 6334)
-}
-
-// bindEnvVars binds environment variables to config keys.
-func bindEnvVars(v *viper.Viper) {
-	_ = v.BindEnv("llm.api_key", "OPENAI_API_KEY")
-	_ = v.BindEnv("embedder.api_key", "OPENAI_API_KEY")
-	_ = v.BindEnv("qdrant.api_key", "QDRANT_API_KEY")
+	return cfg, nil
 }
 
 // applyEnvOverrides applies environment variable overrides.
@@ -158,40 +126,16 @@ func ConfigFilePath(basePath string) string {
 	return filepath.Join(basePath, DefaultConfigDir, DefaultConfigFile)
 }
 
-// GetWorld returns the configuration for a specific world.
-func (c *Config) GetWorld(name string) (*WorldConfig, error) {
-	if len(c.Worlds) == 0 {
-		return nil, fmt.Errorf("no worlds configured")
-	}
-
-	world, ok := c.Worlds[name]
-	if !ok {
-		var b strings.Builder
-		count := 0
-		for k := range c.Worlds {
-			if count > 0 {
-				b.WriteString(", ")
-			}
-			b.WriteString(k)
-			count++
-			if count >= 5 {
-				b.WriteString(", ...")
-				break
-			}
-		}
-		return nil, fmt.Errorf("world %q not found (available: %s)", name, b.String())
-	}
-
-	return &world, nil
+// WorldsFilePath returns the path to the worlds file.
+func WorldsFilePath(basePath string) string {
+	return filepath.Join(basePath, DefaultConfigDir, DefaultWorldsFile)
 }
 
-// GetCollectionForWorld returns the Qdrant collection name for a world.
-func (c *Config) GetCollectionForWorld(name string) (string, error) {
-	world, err := c.GetWorld(name)
-	if err != nil {
-		return "", err
-	}
-	return world.Collection, nil
+// Exists checks if a lore config exists in the given path.
+func Exists(basePath string) bool {
+	configFile := filepath.Join(basePath, DefaultConfigDir, DefaultConfigFile)
+	_, err := os.Stat(configFile)
+	return err == nil
 }
 
 // SanitizeWorldName converts a world name to a valid collection suffix.

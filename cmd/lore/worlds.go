@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 
 	"github.com/ersonp/lore-core/internal/infrastructure/config"
 	embedder "github.com/ersonp/lore-core/internal/infrastructure/embedder/openai"
@@ -16,38 +15,6 @@ import (
 // worldManager handles qdrant collection operations for worlds.
 type worldManager struct {
 	cfg *config.Config
-}
-
-// configFile represents the YAML config file structure for reading/writing.
-type configFile struct {
-	LLM      configLLM                   `yaml:"llm,omitempty"`
-	Embedder configEmbedder              `yaml:"embedder,omitempty"`
-	Qdrant   configQdrant                `yaml:"qdrant,omitempty"`
-	Worlds   map[string]configWorldEntry `yaml:"worlds,omitempty"`
-}
-
-type configLLM struct {
-	Provider string `yaml:"provider,omitempty"`
-	Model    string `yaml:"model,omitempty"`
-	APIKey   string `yaml:"api_key,omitempty"`
-}
-
-type configEmbedder struct {
-	Provider string `yaml:"provider,omitempty"`
-	Model    string `yaml:"model,omitempty"`
-	APIKey   string `yaml:"api_key,omitempty"`
-}
-
-type configQdrant struct {
-	Host       string `yaml:"host,omitempty"`
-	Port       int    `yaml:"port,omitempty"`
-	Collection string `yaml:"collection,omitempty"`
-	APIKey     string `yaml:"api_key,omitempty"`
-}
-
-type configWorldEntry struct {
-	Collection  string `yaml:"collection"`
-	Description string `yaml:"description,omitempty"`
 }
 
 func newWorldsCmd() *cobra.Command {
@@ -80,12 +47,12 @@ func runWorldsList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("getting current directory: %w", err)
 	}
 
-	cfg, err := config.Load(cwd)
+	worlds, err := config.LoadWorlds(cwd)
 	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
+		return fmt.Errorf("loading worlds: %w", err)
 	}
 
-	if len(cfg.Worlds) == 0 {
+	if len(worlds.Worlds) == 0 {
 		fmt.Println("No worlds configured.")
 		fmt.Println("Use 'lore worlds create NAME' to create a world.")
 		return nil
@@ -94,7 +61,7 @@ func runWorldsList(cmd *cobra.Command, args []string) error {
 	fmt.Printf("%-20s %-25s %s\n", "NAME", "COLLECTION", "DESCRIPTION")
 	fmt.Printf("%-20s %-25s %s\n", "----", "----------", "-----------")
 
-	for name, world := range cfg.Worlds {
+	for name, world := range worlds.Worlds {
 		fmt.Printf("%-20s %-25s %s\n", name, world.Collection, world.Description)
 	}
 
@@ -145,17 +112,22 @@ func runWorldsCreate(cmd *cobra.Command, name string, description string) error 
 
 	// If not initialized, add world to existing config
 	if !initialized {
-		if _, exists := cfg.Worlds[name]; exists {
+		worlds, err := config.LoadWorlds(cwd)
+		if err != nil {
+			return fmt.Errorf("loading worlds: %w", err)
+		}
+
+		if worlds.Exists(name) {
 			return fmt.Errorf("world %q already exists", name)
 		}
 
-		newWorld := config.WorldConfig{
+		worlds.Add(name, config.WorldEntry{
 			Collection:  collection,
 			Description: description,
-		}
+		})
 
-		if err := addWorldToConfig(cwd, name, newWorld); err != nil {
-			return fmt.Errorf("adding world to config: %w", err)
+		if err := worlds.Save(cwd); err != nil {
+			return fmt.Errorf("saving worlds: %w", err)
 		}
 	}
 
@@ -199,8 +171,13 @@ func runWorldsDelete(cmd *cobra.Command, name string, force bool) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	world, exists := cfg.Worlds[name]
-	if !exists {
+	worlds, err := config.LoadWorlds(cwd)
+	if err != nil {
+		return fmt.Errorf("loading worlds: %w", err)
+	}
+
+	world, err := worlds.Get(name)
+	if err != nil {
 		return fmt.Errorf("world %q not found", name)
 	}
 
@@ -217,74 +194,13 @@ func runWorldsDelete(cmd *cobra.Command, name string, force bool) error {
 		fmt.Printf("Warning: could not delete collection %q: %v\n", world.Collection, err)
 	}
 
-	if err := removeWorldFromConfig(cwd, name); err != nil {
-		return fmt.Errorf("removing world from config: %w", err)
+	worlds.Remove(name)
+
+	if err := worlds.Save(cwd); err != nil {
+		return fmt.Errorf("saving worlds: %w", err)
 	}
 
 	fmt.Printf("Deleted world %q\n", name)
-
-	return nil
-}
-
-func addWorldToConfig(basePath string, name string, world config.WorldConfig) error {
-	configPath := config.ConfigFilePath(basePath)
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return fmt.Errorf("reading config file: %w", err)
-	}
-
-	var cfg configFile
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return fmt.Errorf("parsing config file: %w", err)
-	}
-
-	if cfg.Worlds == nil {
-		cfg.Worlds = make(map[string]configWorldEntry)
-	}
-
-	cfg.Worlds[name] = configWorldEntry{
-		Collection:  world.Collection,
-		Description: world.Description,
-	}
-
-	newData, err := yaml.Marshal(&cfg)
-	if err != nil {
-		return fmt.Errorf("marshaling config: %w", err)
-	}
-
-	if err := os.WriteFile(configPath, newData, 0600); err != nil {
-		return fmt.Errorf("writing config file: %w", err)
-	}
-
-	return nil
-}
-
-func removeWorldFromConfig(basePath string, name string) error {
-	configPath := config.ConfigFilePath(basePath)
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return fmt.Errorf("reading config file: %w", err)
-	}
-
-	var cfg configFile
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return fmt.Errorf("parsing config file: %w", err)
-	}
-
-	if cfg.Worlds != nil {
-		delete(cfg.Worlds, name)
-	}
-
-	newData, err := yaml.Marshal(&cfg)
-	if err != nil {
-		return fmt.Errorf("marshaling config: %w", err)
-	}
-
-	if err := os.WriteFile(configPath, newData, 0600); err != nil {
-		return fmt.Errorf("writing config file: %w", err)
-	}
 
 	return nil
 }

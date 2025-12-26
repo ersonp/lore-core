@@ -46,7 +46,12 @@ func runList(cmd *cobra.Command, limit int, factType string, sourceFile string) 
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	_, _, repo, err := buildDependencies(cfg, globalWorld)
+	worlds, err := config.LoadWorlds(cwd)
+	if err != nil {
+		return fmt.Errorf("loading worlds: %w", err)
+	}
+
+	_, _, repo, err := buildDependencies(cfg, worlds, globalWorld)
 	if err != nil {
 		return err
 	}

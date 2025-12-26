@@ -53,7 +53,12 @@ func runIngest(cmd *cobra.Command, path string, flags ingestFlags) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	ingestHandler, _, repo, err := buildDependencies(cfg, globalWorld)
+	worlds, err := config.LoadWorlds(cwd)
+	if err != nil {
+		return fmt.Errorf("loading worlds: %w", err)
+	}
+
+	ingestHandler, _, repo, err := buildDependencies(cfg, worlds, globalWorld)
 	if err != nil {
 		return err
 	}

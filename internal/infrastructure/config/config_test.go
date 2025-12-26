@@ -122,8 +122,6 @@ func TestDefault(t *testing.T) {
 	assert.Equal(t, "text-embedding-3-small", cfg.Embedder.Model)
 	assert.Equal(t, "localhost", cfg.Qdrant.Host)
 	assert.Equal(t, 6334, cfg.Qdrant.Port)
-	assert.NotNil(t, cfg.Worlds)
-	assert.Empty(t, cfg.Worlds)
 }
 
 func TestConfigDir(t *testing.T) {

@@ -36,7 +36,7 @@ func main() {
 func run(ctx context.Context) error {
 	rootCmd := &cobra.Command{
 		Use:     "lore",
-		Short:   "A factual consistency database for fictional worlds",
+		Short:   "A factual knowledge base powered by vector search and LLM analysis",
 		Version: version,
 	}
 
@@ -56,12 +56,12 @@ func run(ctx context.Context) error {
 }
 
 // buildDependencies creates all dependencies from config for a specific world.
-func buildDependencies(cfg *config.Config, world string) (*handlers.IngestHandler, *handlers.QueryHandler, *qdrant.Repository, error) {
+func buildDependencies(cfg *config.Config, worlds *config.WorldsConfig, world string) (*handlers.IngestHandler, *handlers.QueryHandler, *qdrant.Repository, error) {
 	if world == "" {
 		return nil, nil, nil, fmt.Errorf("world is required (use --world flag)")
 	}
 
-	collection, err := cfg.GetCollectionForWorld(world)
+	collection, err := worlds.GetCollection(world)
 	if err != nil {
 		return nil, nil, nil, err
 	}

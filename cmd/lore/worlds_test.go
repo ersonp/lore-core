@@ -11,64 +11,65 @@ import (
 	"github.com/ersonp/lore-core/internal/infrastructure/config"
 )
 
-func TestAddWorldToConfig(t *testing.T) {
-	// Create temp directory
+func TestWorldsConfig_Add(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Initialize config first
 	err := config.WriteDefaultWithWorld(tmpDir, "initial", "Initial world")
 	require.NoError(t, err)
 
-	// Add a new world
-	newWorld := config.WorldConfig{
+	// Load worlds and add a new one
+	worlds, err := config.LoadWorlds(tmpDir)
+	require.NoError(t, err)
+
+	worlds.Add("test-world", config.WorldEntry{
 		Collection:  "lore_test_world",
 		Description: "Test world description",
-	}
-	err = addWorldToConfig(tmpDir, "test-world", newWorld)
+	})
+
+	err = worlds.Save(tmpDir)
 	require.NoError(t, err)
 
-	// Verify the world was added
-	cfg, err := config.Load(tmpDir)
+	// Reload and verify
+	worlds, err = config.LoadWorlds(tmpDir)
 	require.NoError(t, err)
 
-	assert.Contains(t, cfg.Worlds, "test-world")
-	assert.Equal(t, "lore_test_world", cfg.Worlds["test-world"].Collection)
-	assert.Equal(t, "Test world description", cfg.Worlds["test-world"].Description)
+	assert.True(t, worlds.Exists("test-world"))
+	entry, err := worlds.Get("test-world")
+	require.NoError(t, err)
+	assert.Equal(t, "lore_test_world", entry.Collection)
+	assert.Equal(t, "Test world description", entry.Description)
 }
 
-func TestAddWorldToConfig_CreatesWorldsMapIfNil(t *testing.T) {
+func TestWorldsConfig_AddToEmptyConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create minimal config without worlds section
+	// Create config directory
 	configDir := filepath.Join(tmpDir, ".lore")
 	err := os.MkdirAll(configDir, 0755)
 	require.NoError(t, err)
 
-	configContent := `llm:
-  provider: openai
-  model: gpt-4o-mini
-qdrant:
-  host: localhost
-  port: 6334
-`
-	err = os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte(configContent), 0600)
+	// Load worlds (should return empty)
+	worlds, err := config.LoadWorlds(tmpDir)
 	require.NoError(t, err)
+	assert.Empty(t, worlds.Worlds)
 
 	// Add a world
-	newWorld := config.WorldConfig{
+	worlds.Add("new-world", config.WorldEntry{
 		Collection:  "lore_new_world",
 		Description: "New world",
-	}
-	err = addWorldToConfig(tmpDir, "new-world", newWorld)
+	})
+
+	err = worlds.Save(tmpDir)
 	require.NoError(t, err)
 
-	// Verify world was added
-	cfg, err := config.Load(tmpDir)
+	// Reload and verify
+	worlds, err = config.LoadWorlds(tmpDir)
 	require.NoError(t, err)
-	assert.Contains(t, cfg.Worlds, "new-world")
+	assert.True(t, worlds.Exists("new-world"))
 }
 
-func TestRemoveWorldFromConfig(t *testing.T) {
+func TestWorldsConfig_Remove(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Initialize config with a world
@@ -76,55 +77,102 @@ func TestRemoveWorldFromConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify world exists
-	cfg, err := config.Load(tmpDir)
+	worlds, err := config.LoadWorlds(tmpDir)
 	require.NoError(t, err)
-	assert.Contains(t, cfg.Worlds, "to-delete")
+	assert.True(t, worlds.Exists("to-delete"))
 
 	// Remove the world
-	err = removeWorldFromConfig(tmpDir, "to-delete")
+	worlds.Remove("to-delete")
+	err = worlds.Save(tmpDir)
 	require.NoError(t, err)
 
-	// Verify world was removed
-	cfg, err = config.Load(tmpDir)
+	// Reload and verify removal
+	worlds, err = config.LoadWorlds(tmpDir)
 	require.NoError(t, err)
-	assert.NotContains(t, cfg.Worlds, "to-delete")
+	assert.False(t, worlds.Exists("to-delete"))
 }
 
-func TestRemoveWorldFromConfig_NonExistentWorld(t *testing.T) {
+func TestWorldsConfig_RemoveNonExistent(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Initialize config
 	err := config.WriteDefaultWithWorld(tmpDir, "existing", "Existing world")
 	require.NoError(t, err)
 
+	// Load worlds
+	worlds, err := config.LoadWorlds(tmpDir)
+	require.NoError(t, err)
+
 	// Remove non-existent world (should not error)
-	err = removeWorldFromConfig(tmpDir, "non-existent")
+	worlds.Remove("non-existent")
+	err = worlds.Save(tmpDir)
 	require.NoError(t, err)
 
 	// Verify existing world still exists
-	cfg, err := config.Load(tmpDir)
+	worlds, err = config.LoadWorlds(tmpDir)
 	require.NoError(t, err)
-	assert.Contains(t, cfg.Worlds, "existing")
+	assert.True(t, worlds.Exists("existing"))
 }
 
-func TestAddWorldToConfig_FileNotFound(t *testing.T) {
+func TestWorldsConfig_Get(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Try to add world without config file
-	newWorld := config.WorldConfig{
-		Collection:  "lore_test",
-		Description: "Test",
-	}
-	err := addWorldToConfig(tmpDir, "test", newWorld)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "reading config file")
+	// Initialize config with a world
+	err := config.WriteDefaultWithWorld(tmpDir, "test-world", "Test description")
+	require.NoError(t, err)
+
+	// Load and get world
+	worlds, err := config.LoadWorlds(tmpDir)
+	require.NoError(t, err)
+
+	entry, err := worlds.Get("test-world")
+	require.NoError(t, err)
+	assert.Equal(t, "lore_test_world", entry.Collection)
+	assert.Equal(t, "Test description", entry.Description)
 }
 
-func TestRemoveWorldFromConfig_FileNotFound(t *testing.T) {
+func TestWorldsConfig_GetNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Try to remove world without config file
-	err := removeWorldFromConfig(tmpDir, "test")
+	// Initialize config with a world
+	err := config.WriteDefaultWithWorld(tmpDir, "existing", "Existing world")
+	require.NoError(t, err)
+
+	// Try to get non-existent world
+	worlds, err := config.LoadWorlds(tmpDir)
+	require.NoError(t, err)
+
+	_, err = worlds.Get("non-existent")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "reading config file")
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestWorldsConfig_GetCollection(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Initialize config with a world
+	err := config.WriteDefaultWithWorld(tmpDir, "my-world", "My world")
+	require.NoError(t, err)
+
+	// Load and get collection
+	worlds, err := config.LoadWorlds(tmpDir)
+	require.NoError(t, err)
+
+	collection, err := worlds.GetCollection("my-world")
+	require.NoError(t, err)
+	assert.Equal(t, "lore_my_world", collection)
+}
+
+func TestLoadWorlds_NoFile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create config directory only
+	configDir := filepath.Join(tmpDir, ".lore")
+	err := os.MkdirAll(configDir, 0755)
+	require.NoError(t, err)
+
+	// Load worlds without file (should return empty)
+	worlds, err := config.LoadWorlds(tmpDir)
+	require.NoError(t, err)
+	assert.Empty(t, worlds.Worlds)
 }

@@ -61,11 +61,16 @@ func runWatch(cmd *cobra.Command, flags watchFlags) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	worlds, err := config.LoadWorlds(cwd)
+	if err != nil {
+		return fmt.Errorf("loading worlds: %w", err)
+	}
+
 	if globalWorld == "" {
 		return fmt.Errorf("world is required (use --world flag)")
 	}
 
-	collection, err := cfg.GetCollectionForWorld(globalWorld)
+	collection, err := worlds.GetCollection(globalWorld)
 	if err != nil {
 		return err
 	}
