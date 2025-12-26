@@ -19,8 +19,8 @@ import (
 )
 
 type watchFlags struct {
-	source   string
-	autoSave bool
+	sourceFile string
+	autoSave   bool
 }
 
 func newWatchCmd() *cobra.Command {
@@ -35,7 +35,7 @@ func newWatchCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&flags.source, "source", "s", "interactive", "Source name for facts")
+	cmd.Flags().StringVarP(&flags.sourceFile, "source", "s", "interactive", "Source name for facts")
 	cmd.Flags().BoolVar(&flags.autoSave, "save", false, "Auto-save facts (with confirmation on conflicts)")
 
 	return cmd
@@ -46,7 +46,7 @@ type watchState struct {
 	pendingIssues     []ports.ConsistencyIssue
 	extractionService *services.ExtractionService
 	vectorDB          ports.VectorDB
-	source            string
+	sourceFile        string
 	autoSave          bool
 }
 
@@ -92,7 +92,7 @@ func runWatch(cmd *cobra.Command, flags watchFlags) error {
 	state := &watchState{
 		extractionService: services.NewExtractionService(llmClient, emb, repo),
 		vectorDB:          repo,
-		source:            flags.source,
+		sourceFile:        flags.sourceFile,
 		autoSave:          flags.autoSave,
 	}
 
@@ -217,7 +217,7 @@ func (s *watchState) processInput(ctx context.Context, text string) error {
 		CheckOnly:        true, // Don't save yet
 	}
 
-	result, err := s.extractionService.ExtractAndStoreWithOptions(ctx, text, s.source, opts)
+	result, err := s.extractionService.ExtractAndStoreWithOptions(ctx, text, s.sourceFile, opts)
 	if err != nil {
 		return fmt.Errorf("extracting facts: %w", err)
 	}

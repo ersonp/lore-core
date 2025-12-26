@@ -166,11 +166,20 @@ func (c *Config) GetWorld(name string) (*WorldConfig, error) {
 
 	world, ok := c.Worlds[name]
 	if !ok {
-		available := make([]string, 0, len(c.Worlds))
+		var b strings.Builder
+		count := 0
 		for k := range c.Worlds {
-			available = append(available, k)
+			if count > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(k)
+			count++
+			if count >= 5 {
+				b.WriteString(", ...")
+				break
+			}
 		}
-		return nil, fmt.Errorf("world %q not found (available: %s)", name, strings.Join(available, ", "))
+		return nil, fmt.Errorf("world %q not found (available: %s)", name, b.String())
 	}
 
 	return &world, nil

@@ -16,11 +16,11 @@ import (
 )
 
 type exportFlags struct {
-	format   string
-	output   string
-	factType string
-	source   string
-	limit    int
+	format     string
+	output     string
+	factType   string
+	sourceFile string
+	limit      int
 }
 
 type exporter struct {
@@ -44,7 +44,7 @@ func newExportCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&flags.format, "format", "f", "json", "Output format (json, csv, markdown)")
 	cmd.Flags().StringVarP(&flags.output, "output", "o", "", "Output file (default: stdout)")
 	cmd.Flags().StringVarP(&flags.factType, "type", "t", "", "Filter by fact type")
-	cmd.Flags().StringVarP(&flags.source, "source", "s", "", "Filter by source file")
+	cmd.Flags().StringVarP(&flags.sourceFile, "source", "s", "", "Filter by source file")
 	cmd.Flags().IntVarP(&flags.limit, "limit", "l", DefaultExportLimit, "Maximum number of facts to export")
 
 	return cmd
@@ -82,7 +82,7 @@ func runExport(cmd *cobra.Command, flags exportFlags) error {
 	}
 
 	ctx := cmd.Context()
-	facts, err := e.fetchFacts(ctx, flags.factType, flags.source, flags.limit)
+	facts, err := e.fetchFacts(ctx, flags.factType, flags.sourceFile, flags.limit)
 	if err != nil {
 		return err
 	}
@@ -90,15 +90,15 @@ func runExport(cmd *cobra.Command, flags exportFlags) error {
 	return e.export(facts)
 }
 
-func (e *exporter) fetchFacts(ctx context.Context, factType, source string, limit int) ([]entities.Fact, error) {
+func (e *exporter) fetchFacts(ctx context.Context, factType, sourceFile string, limit int) ([]entities.Fact, error) {
 	var facts []entities.Fact
 	var err error
 
 	switch {
 	case factType != "":
 		facts, err = e.repo.ListByType(ctx, entities.FactType(factType), limit)
-	case source != "":
-		facts, err = e.repo.ListBySource(ctx, source, limit)
+	case sourceFile != "":
+		facts, err = e.repo.ListBySource(ctx, sourceFile, limit)
 	default:
 		facts, err = e.repo.List(ctx, limit, 0)
 	}

@@ -102,26 +102,26 @@ func (d *deleter) buildDeleteAllPrompt(ctx context.Context) string {
 	return fmt.Sprintf("Delete all %d facts?", count)
 }
 
-func (d *deleter) deleteBySource(ctx context.Context, source string) error {
-	facts, err := d.repo.ListBySource(ctx, source, MaxDeleteBatchSize)
+func (d *deleter) deleteBySource(ctx context.Context, sourceFile string) error {
+	facts, err := d.repo.ListBySource(ctx, sourceFile, MaxDeleteBatchSize)
 	if err != nil {
 		return fmt.Errorf("listing facts by source: %w", err)
 	}
 
 	if len(facts) == 0 {
-		fmt.Printf("No facts found from source: %s\n", source)
+		fmt.Printf("No facts found from source: %s\n", sourceFile)
 		return nil
 	}
 
-	if !d.force && !confirmAction(fmt.Sprintf("Delete %d facts from %s?", len(facts), source)) {
+	if !d.force && !confirmAction(fmt.Sprintf("Delete %d facts from %s?", len(facts), sourceFile)) {
 		fmt.Println("Cancelled.")
 		return nil
 	}
 
-	if err := d.repo.DeleteBySource(ctx, source); err != nil {
+	if err := d.repo.DeleteBySource(ctx, sourceFile); err != nil {
 		return fmt.Errorf("deleting facts by source: %w", err)
 	}
-	fmt.Printf("Deleted %d facts from %s\n", len(facts), source)
+	fmt.Printf("Deleted %d facts from %s\n", len(facts), sourceFile)
 	return nil
 }
 

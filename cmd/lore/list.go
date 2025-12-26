@@ -12,9 +12,9 @@ import (
 
 func newListCmd() *cobra.Command {
 	var (
-		limit    int
-		factType string
-		source   string
+		limit      int
+		factType   string
+		sourceFile string
 	)
 
 	cmd := &cobra.Command{
@@ -22,18 +22,18 @@ func newListCmd() *cobra.Command {
 		Short: "List all facts",
 		Long:  "Lists all facts stored in the database with optional filtering.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runList(cmd, limit, factType, source)
+			return runList(cmd, limit, factType, sourceFile)
 		},
 	}
 
 	cmd.Flags().IntVarP(&limit, "limit", "l", DefaultListLimit, "Maximum number of facts to display")
 	cmd.Flags().StringVarP(&factType, "type", "t", "", "Filter by fact type")
-	cmd.Flags().StringVarP(&source, "source", "s", "", "Filter by source file")
+	cmd.Flags().StringVarP(&sourceFile, "source", "s", "", "Filter by source file")
 
 	return cmd
 }
 
-func runList(cmd *cobra.Command, limit int, factType string, source string) error {
+func runList(cmd *cobra.Command, limit int, factType string, sourceFile string) error {
 	ctx := cmd.Context()
 
 	cwd, err := os.Getwd()
@@ -60,8 +60,8 @@ func runList(cmd *cobra.Command, limit int, factType string, source string) erro
 			return fmt.Errorf("invalid type %q, valid types: %v", factType, validTypes)
 		}
 		facts, err = repo.ListByType(ctx, entities.FactType(factType), limit)
-	case source != "":
-		facts, err = repo.ListBySource(ctx, source, limit)
+	case sourceFile != "":
+		facts, err = repo.ListBySource(ctx, sourceFile, limit)
 	default:
 		facts, err = repo.List(ctx, limit, 0)
 	}

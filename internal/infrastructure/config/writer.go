@@ -70,7 +70,7 @@ worlds:
     description: "%s"
 `, worldName, collection, description)
 
-	if err := os.WriteFile(configFile, []byte(configContent), 0644); err != nil {
+	if err := os.WriteFile(configFile, []byte(configContent), 0600); err != nil {
 		return fmt.Errorf("writing config file: %w", err)
 	}
 
@@ -91,7 +91,7 @@ func Write(basePath string, cfg *Config) error {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
 
-	if err := os.WriteFile(configFile, data, 0644); err != nil {
+	if err := os.WriteFile(configFile, data, 0600); err != nil {
 		return fmt.Errorf("writing config file: %w", err)
 	}
 
