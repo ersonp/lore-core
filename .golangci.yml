@@ -7,9 +7,62 @@ issues:
 
 linters:
   enable:
+    # Default linters
     - errcheck
     - gosimple
     - govet
     - ineffassign
     - staticcheck
     - unused
+    # Architecture enforcement
+    - depguard
+    - gomodguard
+    # Code quality
+    - funlen
+    - nestif
+    - gocyclo
+
+linters-settings:
+  # Block forbidden modules from being added to go.mod
+  gomodguard:
+    blocked:
+      modules:
+        - github.com/spf13/viper:
+            reason: "Use gopkg.in/yaml.v3 consistently for config"
+        - github.com/mitchellh/mapstructure:
+            reason: "Use yaml struct tags instead of mapstructure"
+
+  # Enforce import restrictions per package
+  depguard:
+    rules:
+      # Domain layer cannot import infrastructure
+      domain-isolation:
+        files:
+          - "**/internal/domain/**/*.go"
+        deny:
+          - pkg: "github.com/ersonp/lore-core/internal/infrastructure"
+            desc: "Domain layer cannot import infrastructure (hexagonal architecture)"
+          - pkg: "github.com/ersonp/lore-core/internal/infrastructure/**"
+            desc: "Domain layer cannot import infrastructure (hexagonal architecture)"
+      # Application layer cannot import cmd
+      application-isolation:
+        files:
+          - "**/internal/application/**/*.go"
+        deny:
+          - pkg: "github.com/ersonp/lore-core/cmd"
+            desc: "Application layer cannot import cmd"
+          - pkg: "github.com/ersonp/lore-core/cmd/**"
+            desc: "Application layer cannot import cmd"
+
+  # Function length limits
+  funlen:
+    lines: 80
+    statements: 50
+
+  # Nesting depth limit
+  nestif:
+    min-complexity: 4
+
+  # Cyclomatic complexity limit
+  gocyclo:
+    min-complexity: 15
