@@ -1,15 +1,30 @@
 # Lore-Core
 
-A factual consistency database for fictional worlds. Extract, store, and query facts from stories using vector search and LLM-powered analysis.
+A factual knowledge base powered by vector search and LLM analysis. Extract, store, and query structured facts from any text source.
 
 ## Overview
 
-Lore-Core helps writers and world-builders maintain consistency in their fictional universes by:
+Lore-Core extracts and organizes factual information from unstructured text:
 
-- **Extracting** facts (characters, locations, events, relationships) from existing stories
+- **Extracting** facts (entities, relationships, events, rules) from any text source
 - **Storing** facts in a vector database for semantic search
 - **Querying** related facts using natural language
-- **Checking** new content for inconsistencies with established lore
+- **Checking** new content for inconsistencies with established facts
+
+## Use Cases
+
+While originally designed for fictional world-building, Lore-Core can create knowledge bases for:
+
+| Domain | Example Use |
+|--------|-------------|
+| **Fiction & World-Building** | Track characters, locations, events across a novel series |
+| **Public Figures** | Build fact profiles from publicly available information |
+| **Legal & Regulatory** | Index laws and regulations, identify conflicts or loopholes |
+| **Company Research** | Create structured profiles from reports, news, filings |
+| **Event Analysis** | Aggregate facts about historical or current events |
+| **Debate Preparation** | Organize arguments, evidence, and counterpoints |
+
+Each use case benefits from semantic search and consistency checking to surface related facts and detect contradictions.
 
 ## Features
 
