@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -102,37 +103,46 @@ func (e *exporter) fetchFacts(ctx context.Context, factType, sourceFile string, 
 }
 
 func (e *exporter) export(facts []entities.Fact) error {
-	output, err := e.formatFacts(facts)
-	if err != nil {
+	var w io.Writer
+	var f *os.File
+
+	if e.output != "" {
+		var err error
+		f, err = os.OpenFile(e.output, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+		if err != nil {
+			return fmt.Errorf("creating file: %w", err)
+		}
+		defer f.Close()
+		w = f
+	} else {
+		w = os.Stdout
+	}
+
+	if err := e.formatFacts(w, facts); err != nil {
 		return fmt.Errorf("formatting output: %w", err)
 	}
 
 	if e.output != "" {
-		if err := os.WriteFile(e.output, []byte(output), 0600); err != nil {
-			return fmt.Errorf("writing file: %w", err)
-		}
 		fmt.Printf("Exported %d facts to %s\n", len(facts), e.output)
-		return nil
 	}
 
-	fmt.Print(output)
 	return nil
 }
 
-func (e *exporter) formatFacts(facts []entities.Fact) (string, error) {
+func (e *exporter) formatFacts(w io.Writer, facts []entities.Fact) error {
 	switch e.format {
 	case "json":
-		return formatJSON(facts)
+		return formatJSON(w, facts)
 	case "csv":
-		return formatCSV(facts)
+		return formatCSV(w, facts)
 	case "markdown":
-		return formatMarkdown(facts)
+		return formatMarkdown(w, facts)
 	default:
-		return "", fmt.Errorf("unknown format: %s", e.format)
+		return fmt.Errorf("unknown format: %s", e.format)
 	}
 }
 
-func formatJSON(facts []entities.Fact) (string, error) {
+func formatJSON(w io.Writer, facts []entities.Fact) error {
 	type exportFact struct {
 		ID         string  `json:"id"`
 		Type       string  `json:"type"`
@@ -158,21 +168,17 @@ func formatJSON(facts []entities.Fact) (string, error) {
 		})
 	}
 
-	data, err := json.MarshalIndent(exportFacts, "", "  ")
-	if err != nil {
-		return "", err
-	}
-
-	return string(data) + "\n", nil
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(exportFacts)
 }
 
-func formatCSV(facts []entities.Fact) (string, error) {
-	var buf strings.Builder
-	writer := csv.NewWriter(&buf)
+func formatCSV(w io.Writer, facts []entities.Fact) error {
+	writer := csv.NewWriter(w)
 
 	header := []string{"id", "type", "subject", "predicate", "object", "context", "source_file", "confidence"}
 	if err := writer.Write(header); err != nil {
-		return "", err
+		return err
 	}
 
 	for _, f := range facts {
@@ -187,38 +193,43 @@ func formatCSV(facts []entities.Fact) (string, error) {
 			fmt.Sprintf("%.2f", f.Confidence),
 		}
 		if err := writer.Write(row); err != nil {
-			return "", err
+			return err
 		}
 	}
 
 	writer.Flush()
-	return buf.String(), writer.Error()
+	return writer.Error()
 }
 
-func formatMarkdown(facts []entities.Fact) (string, error) {
-	var buf strings.Builder
+func formatMarkdown(w io.Writer, facts []entities.Fact) error {
+	if _, err := fmt.Fprintf(w, "# Exported Facts\n\nTotal: %d facts\n\n", len(facts)); err != nil {
+		return err
+	}
 
-	buf.WriteString("# Exported Facts\n\n")
-	buf.WriteString(fmt.Sprintf("Total: %d facts\n\n", len(facts)))
-
-	buf.WriteString("| Type | Subject | Predicate | Object | Source |\n")
-	buf.WriteString("|------|---------|-----------|--------|--------|\n")
+	if _, err := fmt.Fprint(w, "| Type | Subject | Predicate | Object | Source |\n"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprint(w, "|------|---------|-----------|--------|--------|\n"); err != nil {
+		return err
+	}
 
 	for _, f := range facts {
 		source := f.SourceFile
 		if len(source) > 30 {
 			source = "..." + source[len(source)-27:]
 		}
-		buf.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n",
+		if _, err := fmt.Fprintf(w, "| %s | %s | %s | %s | %s |\n",
 			f.Type,
 			escapeMarkdown(f.Subject),
 			escapeMarkdown(f.Predicate),
 			escapeMarkdown(f.Object),
 			escapeMarkdown(source),
-		))
+		); err != nil {
+			return err
+		}
 	}
 
-	return buf.String(), nil
+	return nil
 }
 
 func escapeMarkdown(s string) string {

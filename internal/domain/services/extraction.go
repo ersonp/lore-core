@@ -2,8 +2,10 @@
 package services
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -112,6 +114,171 @@ func (s *ExtractionService) ExtractAndStoreWithOptions(ctx context.Context, text
 	// Save facts unless check-only mode
 	if !opts.CheckOnly {
 		if err := s.vectorDB.SaveBatch(ctx, allFacts); err != nil {
+			return nil, fmt.Errorf("saving facts: %w", err)
+		}
+	}
+
+	return result, nil
+}
+
+// streamChunker handles streaming chunking of text from an io.Reader.
+type streamChunker struct {
+	scanner       *bufio.Scanner
+	currentChunk  strings.Builder
+	lastParagraph strings.Builder
+	inParagraph   bool
+}
+
+// newStreamChunker creates a chunker for the given reader.
+func newStreamChunker(r io.Reader) *streamChunker {
+	scanner := bufio.NewScanner(r)
+	// Allow up to 1MB lines
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	return &streamChunker{scanner: scanner}
+}
+
+// addParagraphToChunk adds a completed paragraph to the current chunk.
+// Returns true if chunk was processed (became full).
+func (c *streamChunker) addParagraphToChunk(para string, processChunk func(string) error) (bool, error) {
+	if len(para) == 0 {
+		return false, nil
+	}
+
+	// Check if adding this paragraph would exceed chunk size
+	if c.currentChunk.Len()+len(para)+2 > DefaultChunkSize && c.currentChunk.Len() > 0 {
+		if err := processChunk(c.currentChunk.String()); err != nil {
+			return false, err
+		}
+
+		// Start new chunk with overlap
+		overlap := getOverlapText(c.currentChunk.String(), DefaultChunkOverlap)
+		c.currentChunk.Reset()
+		c.currentChunk.WriteString(overlap)
+		return true, nil
+	}
+
+	if c.currentChunk.Len() > 0 {
+		c.currentChunk.WriteString("\n\n")
+	}
+	c.currentChunk.WriteString(para)
+	return false, nil
+}
+
+// processLine handles a single line, accumulating paragraphs.
+func (c *streamChunker) processLine(line string, processChunk func(string) error) error {
+	if strings.TrimSpace(line) == "" {
+		// Empty line marks paragraph boundary
+		if c.inParagraph && c.lastParagraph.Len() > 0 {
+			para := c.lastParagraph.String()
+			if _, err := c.addParagraphToChunk(para, processChunk); err != nil {
+				return err
+			}
+			c.lastParagraph.Reset()
+			c.inParagraph = false
+		}
+		return nil
+	}
+
+	// Non-empty line: add to current paragraph
+	if c.inParagraph {
+		c.lastParagraph.WriteString("\n")
+	}
+	c.lastParagraph.WriteString(line)
+	c.inParagraph = true
+	return nil
+}
+
+// flush processes any remaining content.
+func (c *streamChunker) flush(processChunk func(string) error) error {
+	// Handle any remaining paragraph
+	if c.lastParagraph.Len() > 0 {
+		para := c.lastParagraph.String()
+		if _, err := c.addParagraphToChunk(para, processChunk); err != nil {
+			return err
+		}
+	}
+
+	// Process the final chunk
+	if c.currentChunk.Len() > 0 {
+		return processChunk(c.currentChunk.String())
+	}
+	return nil
+}
+
+// ExtractFromReader extracts facts by streaming from an io.Reader.
+// This reduces memory from O(file_size) to O(chunk_size) for large files.
+func (s *ExtractionService) ExtractFromReader(ctx context.Context, r io.Reader, sourceFile string, opts ExtractionOptions) (*ExtractionResult, error) {
+	chunker := newStreamChunker(r)
+	var allFacts []entities.Fact
+
+	processChunk := func(chunkText string) error {
+		facts, err := s.llm.ExtractFacts(ctx, chunkText)
+		if err != nil {
+			return fmt.Errorf("extracting facts: %w", err)
+		}
+
+		for i := range facts {
+			facts[i].ID = uuid.New().String()
+			facts[i].SourceFile = sourceFile
+			facts[i].CreatedAt = time.Now()
+			facts[i].UpdatedAt = time.Now()
+		}
+
+		allFacts = append(allFacts, facts...)
+		return nil
+	}
+
+	for chunker.scanner.Scan() {
+		if err := chunker.processLine(chunker.scanner.Text(), processChunk); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := chunker.scanner.Err(); err != nil {
+		return nil, fmt.Errorf("reading input: %w", err)
+	}
+
+	if err := chunker.flush(processChunk); err != nil {
+		return nil, err
+	}
+
+	if len(allFacts) == 0 {
+		return &ExtractionResult{}, nil
+	}
+
+	return s.finalizeFacts(ctx, allFacts, opts)
+}
+
+// finalizeFacts generates embeddings, checks consistency, and saves facts.
+func (s *ExtractionService) finalizeFacts(ctx context.Context, facts []entities.Fact, opts ExtractionOptions) (*ExtractionResult, error) {
+	texts := make([]string, len(facts))
+	for i, fact := range facts {
+		texts[i] = factToText(fact)
+	}
+
+	embeddings, err := s.embedder.EmbedBatch(ctx, texts)
+	if err != nil {
+		return nil, fmt.Errorf("generating embeddings: %w", err)
+	}
+
+	for i := range facts {
+		facts[i].Embedding = embeddings[i]
+	}
+
+	result := &ExtractionResult{
+		Facts: facts,
+	}
+
+	if opts.CheckConsistency {
+		issues, err := s.checkConsistency(ctx, facts)
+		if err != nil {
+			return nil, fmt.Errorf("checking consistency: %w", err)
+		}
+		result.Issues = issues
+	}
+
+	if !opts.CheckOnly {
+		if err := s.vectorDB.SaveBatch(ctx, facts); err != nil {
 			return nil, fmt.Errorf("saving facts: %w", err)
 		}
 	}
