@@ -13,6 +13,9 @@ import (
 
 const (
 	testQdrantHost = "localhost"
+	// testQdrantPort uses Qdrant's gRPC port (6334).
+	// The Go Qdrant client communicates via gRPC, not HTTP (port 6333).
+	// See docker-compose.test.yml for the test instance configuration.
 	testQdrantPort = 6334
 	testCollection = "lore_integration_test"
 )
