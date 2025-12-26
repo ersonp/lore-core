@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ersonp/lore-core/internal/domain/ports"
-	"github.com/ersonp/lore-core/internal/infrastructure/vectordb/qdrant"
 )
 
 type deleteFlags struct {
@@ -46,7 +45,7 @@ func newDeleteCmd() *cobra.Command {
 func runDelete(cmd *cobra.Command, args []string, flags deleteFlags) error {
 	ctx := cmd.Context()
 
-	return withRepo(func(repo *qdrant.Repository) error {
+	return withRepo(func(repo ports.VectorDB) error {
 		d := &deleter{
 			repo:  repo,
 			force: flags.force,

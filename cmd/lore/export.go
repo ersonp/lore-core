@@ -13,7 +13,6 @@ import (
 
 	"github.com/ersonp/lore-core/internal/domain/entities"
 	"github.com/ersonp/lore-core/internal/domain/ports"
-	"github.com/ersonp/lore-core/internal/infrastructure/vectordb/qdrant"
 )
 
 type exportFlags struct {
@@ -62,7 +61,7 @@ func runExport(cmd *cobra.Command, flags exportFlags) error {
 
 	ctx := cmd.Context()
 
-	return withRepo(func(repo *qdrant.Repository) error {
+	return withRepo(func(repo ports.VectorDB) error {
 		e := &exporter{
 			repo:   repo,
 			format: flags.format,

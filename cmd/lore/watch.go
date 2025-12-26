@@ -47,10 +47,10 @@ type watchState struct {
 }
 
 func runWatch(cmd *cobra.Command, flags watchFlags) error {
-	return withDeps(func(d *Deps) error {
+	return withExtractionService(func(extractionService *services.ExtractionService, vectorDB ports.VectorDB) error {
 		state := &watchState{
-			extractionService: d.ExtractionService,
-			vectorDB:          d.Repository,
+			extractionService: extractionService,
+			vectorDB:          vectorDB,
 			sourceFile:        flags.sourceFile,
 			autoSave:          flags.autoSave,
 		}

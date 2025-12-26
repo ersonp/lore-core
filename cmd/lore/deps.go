@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/ersonp/lore-core/internal/application/handlers"
+	"github.com/ersonp/lore-core/internal/domain/ports"
 	"github.com/ersonp/lore-core/internal/domain/services"
 	"github.com/ersonp/lore-core/internal/infrastructure/config"
 	embedder "github.com/ersonp/lore-core/internal/infrastructure/embedder/openai"
@@ -12,19 +13,34 @@ import (
 	"github.com/ersonp/lore-core/internal/infrastructure/vectordb/qdrant"
 )
 
-// Deps holds all initialized dependencies for a command.
+// Deps holds high-level dependencies for commands.
+// Only handlers are exposed - services and repositories are internal.
 type Deps struct {
-	Config            *config.Config
-	Worlds            *config.WorldsConfig
-	IngestHandler     *handlers.IngestHandler
-	QueryHandler      *handlers.QueryHandler
-	Repository        *qdrant.Repository
-	ExtractionService *services.ExtractionService
+	Config        *config.Config
+	Worlds        *config.WorldsConfig
+	IngestHandler *handlers.IngestHandler
+	QueryHandler  *handlers.QueryHandler
+}
+
+// internalDeps holds all dependencies including low-level components.
+// Used internally by helper functions.
+type internalDeps struct {
+	Deps
+	repo              *qdrant.Repository
+	extractionService *services.ExtractionService
 }
 
 // withDeps loads config and builds dependencies, then calls the provided function.
 // It handles cleanup automatically.
 func withDeps(fn func(*Deps) error) error {
+	return withInternalDeps(func(d *internalDeps) error {
+		return fn(&d.Deps)
+	})
+}
+
+// withInternalDeps provides access to all dependencies including low-level components.
+// Used by commands that need direct repository or service access.
+func withInternalDeps(fn func(*internalDeps) error) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("getting current directory: %w", err)
@@ -71,21 +87,30 @@ func withDeps(fn func(*Deps) error) error {
 	extractionService := services.NewExtractionService(llmClient, emb, repo)
 	queryService := services.NewQueryService(emb, repo)
 
-	deps := &Deps{
-		Config:            cfg,
-		Worlds:            worlds,
-		IngestHandler:     handlers.NewIngestHandler(extractionService),
-		QueryHandler:      handlers.NewQueryHandler(queryService),
-		Repository:        repo,
-		ExtractionService: extractionService,
+	deps := &internalDeps{
+		Deps: Deps{
+			Config:        cfg,
+			Worlds:        worlds,
+			IngestHandler: handlers.NewIngestHandler(extractionService),
+			QueryHandler:  handlers.NewQueryHandler(queryService),
+		},
+		repo:              repo,
+		extractionService: extractionService,
 	}
 
 	return fn(deps)
 }
 
-// withRepo is a simpler variant when only repository is needed.
-func withRepo(fn func(*qdrant.Repository) error) error {
-	return withDeps(func(d *Deps) error {
-		return fn(d.Repository)
+// withRepo provides direct repository access for commands that need it.
+func withRepo(fn func(ports.VectorDB) error) error {
+	return withInternalDeps(func(d *internalDeps) error {
+		return fn(d.repo)
+	})
+}
+
+// withExtractionService provides direct service access for commands like watch.
+func withExtractionService(fn func(*services.ExtractionService, ports.VectorDB) error) error {
+	return withInternalDeps(func(d *internalDeps) error {
+		return fn(d.extractionService, d.repo)
 	})
 }

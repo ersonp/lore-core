@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ersonp/lore-core/internal/domain/entities"
-	"github.com/ersonp/lore-core/internal/infrastructure/vectordb/qdrant"
+	"github.com/ersonp/lore-core/internal/domain/ports"
 )
 
 func newListCmd() *cobra.Command {
@@ -35,7 +35,7 @@ func newListCmd() *cobra.Command {
 func runList(cmd *cobra.Command, limit int, factType string, sourceFile string) error {
 	ctx := cmd.Context()
 
-	return withRepo(func(repo *qdrant.Repository) error {
+	return withRepo(func(repo ports.VectorDB) error {
 		var facts []entities.Fact
 		var err error
 
