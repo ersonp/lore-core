@@ -17,10 +17,17 @@ type LLMClient struct {
 	// CheckConsistency return values
 	Issues         []ports.ConsistencyIssue
 	ConsistencyErr error
+
+	// Call tracking
+	ExtractFactsCallCount     int
+	ExtractFactsLastText      string
+	CheckConsistencyCallCount int
 }
 
 // ExtractFacts returns the configured facts or error.
 func (m *LLMClient) ExtractFacts(ctx context.Context, text string) ([]entities.Fact, error) {
+	m.ExtractFactsCallCount++
+	m.ExtractFactsLastText = text
 	if m.ExtractErr != nil {
 		return nil, m.ExtractErr
 	}
@@ -29,6 +36,7 @@ func (m *LLMClient) ExtractFacts(ctx context.Context, text string) ([]entities.F
 
 // CheckConsistency returns the configured issues or error.
 func (m *LLMClient) CheckConsistency(ctx context.Context, newFacts []entities.Fact, existingFacts []entities.Fact) ([]ports.ConsistencyIssue, error) {
+	m.CheckConsistencyCallCount++
 	if m.ConsistencyErr != nil {
 		return nil, m.ConsistencyErr
 	}
