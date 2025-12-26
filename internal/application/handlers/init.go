@@ -12,15 +12,13 @@ import (
 
 // InitHandler handles database initialization.
 type InitHandler struct {
-	vectorDB          ports.VectorDB
-	collectionManager ports.CollectionManager
+	vectorDB ports.VectorDB
 }
 
 // NewInitHandler creates a new init handler.
-func NewInitHandler(vectorDB ports.VectorDB, collectionManager ports.CollectionManager) *InitHandler {
+func NewInitHandler(vectorDB ports.VectorDB) *InitHandler {
 	return &InitHandler{
-		vectorDB:          vectorDB,
-		collectionManager: collectionManager,
+		vectorDB: vectorDB,
 	}
 }
 
@@ -45,10 +43,8 @@ func (h *InitHandler) Handle(ctx context.Context, basePath string) (*InitResult,
 		return nil, fmt.Errorf("loading config: %w", err)
 	}
 
-	if h.collectionManager != nil {
-		if err := h.collectionManager.EnsureCollection(ctx, embedder.VectorSize); err != nil {
-			return nil, fmt.Errorf("creating collection: %w", err)
-		}
+	if err := h.vectorDB.EnsureCollection(ctx, embedder.VectorSize); err != nil {
+		return nil, fmt.Errorf("creating collection: %w", err)
 	}
 
 	return &InitResult{

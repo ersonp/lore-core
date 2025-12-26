@@ -8,6 +8,12 @@ import (
 
 // VectorDB defines the interface for vector database operations.
 type VectorDB interface {
+	// EnsureCollection creates the collection if it doesn't exist.
+	EnsureCollection(ctx context.Context, vectorSize uint64) error
+
+	// DeleteCollection removes the collection and all its data.
+	DeleteCollection(ctx context.Context) error
+
 	// Save stores a fact with its embedding.
 	Save(ctx context.Context, fact entities.Fact) error
 

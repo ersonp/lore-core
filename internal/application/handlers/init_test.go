@@ -13,28 +13,26 @@ import (
 
 func TestNewInitHandler(t *testing.T) {
 	db := &mocks.VectorDB{}
-	cm := &mocks.CollectionManager{}
 
-	handler := NewInitHandler(db, cm)
+	handler := NewInitHandler(db)
 
 	require.NotNil(t, handler)
 	assert.Equal(t, db, handler.vectorDB)
-	assert.Equal(t, cm, handler.collectionManager)
 }
 
 func TestInitHandler_Handle_Success(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	db := &mocks.VectorDB{}
-	cm := &mocks.CollectionManager{}
 
-	handler := NewInitHandler(db, cm)
+	handler := NewInitHandler(db)
 
 	result, err := handler.Handle(t.Context(), tmpDir)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Contains(t, result.ConfigPath, "config.yaml")
+	assert.Equal(t, 1, db.EnsureCollectionCallCount)
 
 	// Verify config was created
 	assert.True(t, config.Exists(tmpDir))
@@ -48,9 +46,8 @@ func TestInitHandler_Handle_AlreadyInitialized(t *testing.T) {
 	require.NoError(t, err)
 
 	db := &mocks.VectorDB{}
-	cm := &mocks.CollectionManager{}
 
-	handler := NewInitHandler(db, cm)
+	handler := NewInitHandler(db)
 
 	_, err = handler.Handle(t.Context(), tmpDir)
 
@@ -58,34 +55,18 @@ func TestInitHandler_Handle_AlreadyInitialized(t *testing.T) {
 	assert.Contains(t, err.Error(), "already initialized")
 }
 
-func TestInitHandler_Handle_CollectionManagerError(t *testing.T) {
+func TestInitHandler_Handle_CollectionError(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	db := &mocks.VectorDB{}
-	cm := &mocks.CollectionManager{
-		EnsureErr: errors.New("connection failed"),
+	db := &mocks.VectorDB{
+		EnsureCollectionErr: errors.New("connection failed"),
 	}
 
-	handler := NewInitHandler(db, cm)
+	handler := NewInitHandler(db)
 
 	_, err := handler.Handle(t.Context(), tmpDir)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "creating collection")
 	assert.Contains(t, err.Error(), "connection failed")
-}
-
-func TestInitHandler_Handle_NilCollectionManager(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	db := &mocks.VectorDB{}
-
-	// Pass nil CollectionManager - should still work
-	handler := NewInitHandler(db, nil)
-
-	result, err := handler.Handle(t.Context(), tmpDir)
-
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.Contains(t, result.ConfigPath, "config.yaml")
 }

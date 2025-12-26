@@ -11,9 +11,27 @@ type VectorDB struct {
 	Facts []entities.Fact
 	Err   error
 
+	// Collection errors (separate from Err for fine-grained control)
+	EnsureCollectionErr error
+	DeleteCollectionErr error
+
 	// Call tracking
-	SaveBatchCallCount int
-	SaveBatchLastFacts []entities.Fact
+	SaveBatchCallCount        int
+	SaveBatchLastFacts        []entities.Fact
+	EnsureCollectionCallCount int
+	DeleteCollectionCallCount int
+}
+
+// EnsureCollection creates the collection if it doesn't exist.
+func (m *VectorDB) EnsureCollection(ctx context.Context, vectorSize uint64) error {
+	m.EnsureCollectionCallCount++
+	return m.EnsureCollectionErr
+}
+
+// DeleteCollection removes the collection and all its data.
+func (m *VectorDB) DeleteCollection(ctx context.Context) error {
+	m.DeleteCollectionCallCount++
+	return m.DeleteCollectionErr
 }
 
 // Save stores a single fact.
