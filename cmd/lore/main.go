@@ -9,13 +9,6 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
-
-	"github.com/ersonp/lore-core/internal/application/handlers"
-	"github.com/ersonp/lore-core/internal/domain/services"
-	"github.com/ersonp/lore-core/internal/infrastructure/config"
-	embedder "github.com/ersonp/lore-core/internal/infrastructure/embedder/openai"
-	llm "github.com/ersonp/lore-core/internal/infrastructure/llm/openai"
-	"github.com/ersonp/lore-core/internal/infrastructure/vectordb/qdrant"
 )
 
 var (
@@ -53,42 +46,4 @@ func run(ctx context.Context) error {
 	)
 
 	return rootCmd.ExecuteContext(ctx)
-}
-
-// buildDependencies creates all dependencies from config for a specific world.
-func buildDependencies(cfg *config.Config, worlds *config.WorldsConfig, world string) (*handlers.IngestHandler, *handlers.QueryHandler, *qdrant.Repository, error) {
-	if world == "" {
-		return nil, nil, nil, fmt.Errorf("world is required (use --world flag)")
-	}
-
-	collection, err := worlds.GetCollection(world)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	qdrantCfg := cfg.Qdrant
-	qdrantCfg.Collection = collection
-
-	repo, err := qdrant.NewRepository(qdrantCfg)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("creating qdrant repository: %w", err)
-	}
-
-	emb, err := embedder.NewEmbedder(cfg.Embedder)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("creating embedder: %w", err)
-	}
-
-	llmClient, err := llm.NewClient(cfg.LLM)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("creating llm client: %w", err)
-	}
-
-	extractionService := services.NewExtractionService(llmClient, emb, repo)
-	queryService := services.NewQueryService(emb, repo)
-
-	ingestHandler := handlers.NewIngestHandler(extractionService)
-	queryHandler := handlers.NewQueryHandler(queryService)
-
-	return ingestHandler, queryHandler, repo, nil
 }

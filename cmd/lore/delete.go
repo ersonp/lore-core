@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ersonp/lore-core/internal/domain/ports"
-	"github.com/ersonp/lore-core/internal/infrastructure/config"
 )
 
 type deleteFlags struct {
@@ -44,43 +43,25 @@ func newDeleteCmd() *cobra.Command {
 }
 
 func runDelete(cmd *cobra.Command, args []string, flags deleteFlags) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("getting current directory: %w", err)
-	}
-
-	cfg, err := config.Load(cwd)
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
-	}
-
-	worlds, err := config.LoadWorlds(cwd)
-	if err != nil {
-		return fmt.Errorf("loading worlds: %w", err)
-	}
-
-	_, _, repo, err := buildDependencies(cfg, worlds, globalWorld)
-	if err != nil {
-		return err
-	}
-	defer repo.Close()
-
-	d := &deleter{
-		repo:  repo,
-		force: flags.force,
-	}
-
 	ctx := cmd.Context()
-	switch {
-	case flags.all:
-		return d.deleteAll(ctx)
-	case flags.sourceFile != "":
-		return d.deleteBySource(ctx, flags.sourceFile)
-	case len(args) > 0:
-		return d.deleteByID(ctx, args[0])
-	default:
-		return fmt.Errorf("specify a fact ID, --source, or --all")
-	}
+
+	return withRepo(func(repo ports.VectorDB) error {
+		d := &deleter{
+			repo:  repo,
+			force: flags.force,
+		}
+
+		switch {
+		case flags.all:
+			return d.deleteAll(ctx)
+		case flags.sourceFile != "":
+			return d.deleteBySource(ctx, flags.sourceFile)
+		case len(args) > 0:
+			return d.deleteByID(ctx, args[0])
+		default:
+			return fmt.Errorf("specify a fact ID, --source, or --all")
+		}
+	})
 }
 
 func (d *deleter) deleteAll(ctx context.Context) error {

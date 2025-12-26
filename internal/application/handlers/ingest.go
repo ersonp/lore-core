@@ -53,6 +53,7 @@ func (h *IngestHandler) Handle(ctx context.Context, filePath string) (*IngestRes
 }
 
 // HandleWithOptions ingests a file with consistency checking options.
+// Uses streaming to avoid loading entire file into memory.
 func (h *IngestHandler) HandleWithOptions(ctx context.Context, filePath string, opts IngestOptions) (*IngestResult, error) {
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
@@ -68,17 +69,18 @@ func (h *IngestHandler) HandleWithOptions(ctx context.Context, filePath string, 
 		return nil, fmt.Errorf("path is a directory, not a file: %s", absPath)
 	}
 
-	content, err := os.ReadFile(absPath)
+	file, err := os.Open(absPath)
 	if err != nil {
-		return nil, fmt.Errorf("reading file: %w", err)
+		return nil, fmt.Errorf("opening file: %w", err)
 	}
+	defer file.Close()
 
 	extractOpts := services.ExtractionOptions{
 		CheckConsistency: opts.CheckConsistency,
 		CheckOnly:        opts.CheckOnly,
 	}
 
-	result, err := h.extractionService.ExtractAndStoreWithOptions(ctx, string(content), absPath, extractOpts)
+	result, err := h.extractionService.ExtractFromReader(ctx, file, absPath, extractOpts)
 	if err != nil {
 		return nil, fmt.Errorf("extracting facts: %w", err)
 	}

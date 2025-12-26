@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -25,8 +26,11 @@ func TestFormatJSON(t *testing.T) {
 		},
 	}
 
-	result, err := formatJSON(facts)
+	var buf bytes.Buffer
+	err := formatJSON(&buf, facts)
 	require.NoError(t, err)
+
+	result := buf.String()
 
 	// Verify it's valid JSON
 	var parsed []map[string]interface{}
@@ -47,9 +51,10 @@ func TestFormatJSON(t *testing.T) {
 func TestFormatJSON_EmptyFacts(t *testing.T) {
 	facts := []entities.Fact{}
 
-	result, err := formatJSON(facts)
+	var buf bytes.Buffer
+	err := formatJSON(&buf, facts)
 	require.NoError(t, err)
-	assert.Equal(t, "[]\n", result)
+	assert.Equal(t, "[]\n", buf.String())
 }
 
 func TestFormatCSV(t *testing.T) {
@@ -66,9 +71,11 @@ func TestFormatCSV(t *testing.T) {
 		},
 	}
 
-	result, err := formatCSV(facts)
+	var buf bytes.Buffer
+	err := formatCSV(&buf, facts)
 	require.NoError(t, err)
 
+	result := buf.String()
 	lines := strings.Split(strings.TrimSpace(result), "\n")
 	require.Len(t, lines, 2)
 
@@ -93,8 +100,11 @@ func TestFormatCSV_SpecialCharacters(t *testing.T) {
 		},
 	}
 
-	result, err := formatCSV(facts)
+	var buf bytes.Buffer
+	err := formatCSV(&buf, facts)
 	require.NoError(t, err)
+
+	result := buf.String()
 
 	// CSV should properly escape commas and quotes
 	assert.Contains(t, result, "\"Name, with comma\"")
@@ -112,9 +122,11 @@ func TestFormatMarkdown(t *testing.T) {
 		},
 	}
 
-	result, err := formatMarkdown(facts)
+	var buf bytes.Buffer
+	err := formatMarkdown(&buf, facts)
 	require.NoError(t, err)
 
+	result := buf.String()
 	assert.Contains(t, result, "# Exported Facts")
 	assert.Contains(t, result, "Total: 1 facts")
 	assert.Contains(t, result, "| Type | Subject | Predicate | Object | Source |")
@@ -134,9 +146,11 @@ func TestFormatMarkdown_LongSourceTruncated(t *testing.T) {
 		},
 	}
 
-	result, err := formatMarkdown(facts)
+	var buf bytes.Buffer
+	err := formatMarkdown(&buf, facts)
 	require.NoError(t, err)
 
+	result := buf.String()
 	// Source should be truncated with ...
 	assert.Contains(t, result, "...")
 	assert.NotContains(t, result, longSource) // Full path should not appear

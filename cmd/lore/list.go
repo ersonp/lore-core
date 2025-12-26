@@ -2,12 +2,11 @@ package main
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/ersonp/lore-core/internal/domain/entities"
-	"github.com/ersonp/lore-core/internal/infrastructure/config"
+	"github.com/ersonp/lore-core/internal/domain/ports"
 )
 
 func newListCmd() *cobra.Command {
@@ -36,53 +35,35 @@ func newListCmd() *cobra.Command {
 func runList(cmd *cobra.Command, limit int, factType string, sourceFile string) error {
 	ctx := cmd.Context()
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("getting current directory: %w", err)
-	}
+	return withRepo(func(repo ports.VectorDB) error {
+		var facts []entities.Fact
+		var err error
 
-	cfg, err := config.Load(cwd)
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
-	}
-
-	worlds, err := config.LoadWorlds(cwd)
-	if err != nil {
-		return fmt.Errorf("loading worlds: %w", err)
-	}
-
-	_, _, repo, err := buildDependencies(cfg, worlds, globalWorld)
-	if err != nil {
-		return err
-	}
-	defer repo.Close()
-
-	var facts []entities.Fact
-
-	switch {
-	case factType != "":
-		if !isValidType(factType) {
-			return fmt.Errorf("invalid type %q, valid types: %v", factType, validTypes)
+		switch {
+		case factType != "":
+			if !isValidType(factType) {
+				return fmt.Errorf("invalid type %q, valid types: %v", factType, validTypes)
+			}
+			facts, err = repo.ListByType(ctx, entities.FactType(factType), limit)
+		case sourceFile != "":
+			facts, err = repo.ListBySource(ctx, sourceFile, limit)
+		default:
+			facts, err = repo.List(ctx, limit, 0)
 		}
-		facts, err = repo.ListByType(ctx, entities.FactType(factType), limit)
-	case sourceFile != "":
-		facts, err = repo.ListBySource(ctx, sourceFile, limit)
-	default:
-		facts, err = repo.List(ctx, limit, 0)
-	}
 
-	if err != nil {
-		return fmt.Errorf("listing facts: %w", err)
-	}
+		if err != nil {
+			return fmt.Errorf("listing facts: %w", err)
+		}
 
-	if len(facts) == 0 {
-		fmt.Println("No facts found.")
+		if len(facts) == 0 {
+			fmt.Println("No facts found.")
+			return nil
+		}
+
+		count, _ := repo.Count(ctx)
+		displayFacts(facts, count)
 		return nil
-	}
-
-	count, _ := repo.Count(ctx) // Error handled in displayFacts
-	displayFacts(facts, count)
-	return nil
+	})
 }
 
 func displayFacts(facts []entities.Fact, totalCount uint64) {

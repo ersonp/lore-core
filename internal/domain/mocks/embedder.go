@@ -7,6 +7,10 @@ import "context"
 type Embedder struct {
 	EmbeddingResult []float32
 	Err             error
+
+	// Call tracking
+	EmbedBatchCallCount int
+	EmbedBatchLastTexts []string
 }
 
 // Embed returns the configured embedding or error.
@@ -19,6 +23,8 @@ func (m *Embedder) Embed(ctx context.Context, text string) ([]float32, error) {
 
 // EmbedBatch returns embeddings for multiple texts.
 func (m *Embedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+	m.EmbedBatchCallCount++
+	m.EmbedBatchLastTexts = texts
 	if m.Err != nil {
 		return nil, m.Err
 	}

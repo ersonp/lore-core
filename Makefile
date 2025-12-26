@@ -1,4 +1,4 @@
-.PHONY: format lint test vet build clean check
+.PHONY: format lint test test-integration vet build clean check
 
 # Format all Go files with goimports (excluding vendor)
 format:
@@ -11,6 +11,10 @@ lint:
 # Run all tests
 test:
 	go test -v ./...
+
+# Run integration tests (requires Qdrant running on localhost:6334)
+test-integration:
+	INTEGRATION_TEST=1 go test -v ./tests/integration/...
 
 # Run go vet
 vet:

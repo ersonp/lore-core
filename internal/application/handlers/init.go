@@ -43,12 +43,8 @@ func (h *InitHandler) Handle(ctx context.Context, basePath string) (*InitResult,
 		return nil, fmt.Errorf("loading config: %w", err)
 	}
 
-	if repo, ok := h.vectorDB.(interface {
-		EnsureCollection(ctx context.Context, vectorSize uint64) error
-	}); ok {
-		if err := repo.EnsureCollection(ctx, embedder.VectorSize); err != nil {
-			return nil, fmt.Errorf("creating collection: %w", err)
-		}
+	if err := h.vectorDB.EnsureCollection(ctx, embedder.VectorSize); err != nil {
+		return nil, fmt.Errorf("creating collection: %w", err)
 	}
 
 	return &InitResult{
