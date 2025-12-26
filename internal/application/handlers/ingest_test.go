@@ -28,7 +28,7 @@ func TestIngestHandler_Handle(t *testing.T) {
 	// Create temp file
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "test.txt")
-	err := os.WriteFile(testFile, []byte("Frodo is a hobbit from the Shire."), 0600)
+	err := os.WriteFile(testFile, []byte("Frodo is a hobbit from the Shire."), 0644)
 	require.NoError(t, err)
 
 	// Setup mocks
@@ -61,7 +61,7 @@ func TestIngestHandler_HandleWithOptions_CheckOnly(t *testing.T) {
 	// Create temp file
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "test.txt")
-	err := os.WriteFile(testFile, []byte("Gandalf is a wizard."), 0600)
+	err := os.WriteFile(testFile, []byte("Gandalf is a wizard."), 0644)
 	require.NoError(t, err)
 
 	llm := &mocks.LLMClient{
@@ -122,11 +122,11 @@ func TestIngestHandler_Handle_Directory(t *testing.T) {
 func TestIngestHandler_HandleDirectory(t *testing.T) {
 	// Create temp directory with files
 	tmpDir := t.TempDir()
-	err := os.WriteFile(filepath.Join(tmpDir, "file1.txt"), []byte("Content 1"), 0600)
+	err := os.WriteFile(filepath.Join(tmpDir, "file1.txt"), []byte("Content 1"), 0644)
 	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(tmpDir, "file2.txt"), []byte("Content 2"), 0600)
+	err = os.WriteFile(filepath.Join(tmpDir, "file2.txt"), []byte("Content 2"), 0644)
 	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(tmpDir, "other.md"), []byte("Other content"), 0600)
+	err = os.WriteFile(filepath.Join(tmpDir, "other.md"), []byte("Other content"), 0644)
 	require.NoError(t, err)
 
 	llm := &mocks.LLMClient{
@@ -160,7 +160,7 @@ func TestIngestHandler_HandleDirectory(t *testing.T) {
 
 func TestIngestHandler_HandleDirectory_NoMatches(t *testing.T) {
 	tmpDir := t.TempDir()
-	err := os.WriteFile(filepath.Join(tmpDir, "file.md"), []byte("Content"), 0600)
+	err := os.WriteFile(filepath.Join(tmpDir, "file.md"), []byte("Content"), 0644)
 	require.NoError(t, err)
 
 	llm := &mocks.LLMClient{}
@@ -179,7 +179,7 @@ func TestIngestHandler_HandleDirectory_NoMatches(t *testing.T) {
 func TestIngestHandler_HandleDirectory_NotDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "file.txt")
-	err := os.WriteFile(testFile, []byte("Content"), 0600)
+	err := os.WriteFile(testFile, []byte("Content"), 0644)
 	require.NoError(t, err)
 
 	llm := &mocks.LLMClient{}
@@ -198,7 +198,7 @@ func TestIngestHandler_HandleDirectory_NotDirectory(t *testing.T) {
 func TestIsDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "file.txt")
-	err := os.WriteFile(testFile, []byte("Content"), 0600)
+	err := os.WriteFile(testFile, []byte("Content"), 0644)
 	require.NoError(t, err)
 
 	assert.True(t, IsDirectory(tmpDir))
