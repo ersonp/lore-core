@@ -550,6 +550,31 @@ func (s *Service) DoWork(ctx context.Context) error {
 }
 ```
 
+### No API/database calls inside loops
+Batch external calls instead of calling per-item:
+
+```go
+// Bad - O(n) API calls, extremely slow
+for _, fact := range facts {
+    result, _ := llmClient.Process(ctx, fact)      // API call per item
+    similar, _ := vectorDB.Search(ctx, fact.Embedding)  // DB call per item
+}
+
+// Good - batch operations, O(1) API calls
+embeddings, _ := embedder.EmbedBatch(ctx, texts)   // Single API call
+err := vectorDB.SaveBatch(ctx, facts)              // Single DB call
+
+// Good - collect first, then batch
+var allSimilar []Fact
+for _, fact := range facts {
+    similar, _ := vectorDB.Search(ctx, fact.Embedding)  // Fast DB calls OK
+    allSimilar = append(allSimilar, similar...)
+}
+issues, _ := llmClient.CheckBatch(ctx, facts, allSimilar)  // Single LLM call
+```
+
+**Impact:** 50 items with per-item LLM calls = ~100 seconds. Batched = ~3 seconds.
+
 ---
 
 ## Makefile Commands
