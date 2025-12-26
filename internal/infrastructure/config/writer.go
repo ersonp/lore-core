@@ -8,26 +8,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// DefaultConfigYAML is the default configuration content.
-const DefaultConfigYAML = `# Lore-Core Configuration
-
-llm:
-  provider: openai
-  model: gpt-4o-mini
-  # api_key: your-api-key (or set OPENAI_API_KEY env var)
-
-embedder:
-  provider: openai
-  model: text-embedding-3-small
-  # api_key: your-api-key (or set OPENAI_API_KEY env var)
-
-qdrant:
-  host: localhost
-  port: 6334
-  collection: lore_facts
-  # api_key: your-api-key (for Qdrant Cloud)
-`
-
 // WriteDefault creates the .lore directory and writes a default config file.
 func WriteDefault(basePath string) error {
 	return WriteDefaultWithWorld(basePath, "default", "")
@@ -46,31 +26,18 @@ func WriteDefaultWithWorld(basePath string, worldName string, description string
 		return fmt.Errorf("config file already exists: %s", configFile)
 	}
 
-	collection := GenerateCollectionName(worldName)
-	configContent := fmt.Sprintf(`# Lore-Core Configuration
+	cfg := Default()
+	cfg.Worlds[worldName] = WorldConfig{
+		Collection:  GenerateCollectionName(worldName),
+		Description: description,
+	}
 
-llm:
-  provider: openai
-  model: gpt-4o-mini
-  # api_key: your-api-key (or set OPENAI_API_KEY env var)
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
 
-embedder:
-  provider: openai
-  model: text-embedding-3-small
-  # api_key: your-api-key (or set OPENAI_API_KEY env var)
-
-qdrant:
-  host: localhost
-  port: 6334
-  # api_key: your-api-key (for Qdrant Cloud)
-
-worlds:
-  %s:
-    collection: %s
-    description: "%s"
-`, worldName, collection, description)
-
-	if err := os.WriteFile(configFile, []byte(configContent), 0600); err != nil {
+	if err := os.WriteFile(configFile, data, 0600); err != nil {
 		return fmt.Errorf("writing config file: %w", err)
 	}
 
