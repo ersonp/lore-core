@@ -575,6 +575,44 @@ issues, _ := llmClient.CheckBatch(ctx, facts, allSimilar)  // Single LLM call
 
 **Impact:** 50 items with per-item LLM calls = ~100 seconds. Batched = ~3 seconds.
 
+### No nil for dependency interfaces
+Never design APIs that accept nil for dependency interfaces:
+
+```go
+// Bad - allows nil, forces nil checks everywhere
+func NewHandler(db VectorDB, cm CollectionManager) *Handler {
+    return &Handler{db: db, cm: cm}
+}
+
+func (h *Handler) Init() error {
+    if h.cm != nil {  // Forced nil check
+        h.cm.EnsureCollection(ctx, size)
+    }
+}
+
+// Usage forces callers to pass nil
+handler := NewHandler(db, nil)
+
+// Good - single complete interface, no nil handling needed
+type VectorDB interface {
+    Save(ctx context.Context, fact Fact) error
+    EnsureCollection(ctx context.Context, size uint64) error
+    // ... all methods in one interface
+}
+
+func NewHandler(db VectorDB) *Handler {
+    return &Handler{db: db}
+}
+```
+
+**Why this matters:**
+- Nil checks clutter code and are easy to forget
+- Unclear API contract (is nil valid or a bug?)
+- Runtime panics when nil check is missed
+- Sign of over-engineering (separate interface for hypothetical future)
+
+**Exceptions:** Optional callbacks (`func(...)`) are fine to pass as nil.
+
 ---
 
 ## Makefile Commands
