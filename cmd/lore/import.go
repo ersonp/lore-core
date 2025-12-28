@@ -30,7 +30,7 @@ func newImportCmd() *cobra.Command {
 
 	cmd.Flags().StringVarP(&flags.format, "format", "f", "auto", "File format (json, csv, auto)")
 	cmd.Flags().BoolVar(&flags.dryRun, "dry-run", false, "Validate without saving")
-	cmd.Flags().StringVar(&flags.onConflict, "on-conflict", "skip", "Conflict handling (skip, overwrite)")
+	cmd.Flags().StringVar(&flags.onConflict, "on-conflict", "overwrite", "Conflict handling: overwrite (update existing) or skip")
 
 	return cmd
 }
