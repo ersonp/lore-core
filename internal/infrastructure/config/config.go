@@ -32,6 +32,7 @@ type Config struct {
 	LLM      LLMConfig      `yaml:"llm,omitempty"`
 	Embedder EmbedderConfig `yaml:"embedder,omitempty"`
 	Qdrant   QdrantConfig   `yaml:"qdrant,omitempty"`
+	SQLite   SQLiteConfig   `yaml:"sqlite,omitempty"`
 }
 
 // LLMConfig holds configuration for the LLM provider.
@@ -54,6 +55,13 @@ type QdrantConfig struct {
 	Port       int    `yaml:"port,omitempty"`
 	Collection string `yaml:"collection,omitempty"`
 	APIKey     string `yaml:"api_key,omitempty"`
+}
+
+// SQLiteConfig holds configuration for the SQLite relational database.
+type SQLiteConfig struct {
+	// Path is the file path to the SQLite database.
+	// For per-world databases, this is computed dynamically using SQLitePathForWorld.
+	Path string `yaml:"path,omitempty"`
 }
 
 // Default returns a Config with default values.
@@ -166,4 +174,14 @@ func SanitizeWorldName(name string) string {
 // GenerateCollectionName creates a collection name for a world.
 func GenerateCollectionName(worldName string) string {
 	return "lore_" + SanitizeWorldName(worldName)
+}
+
+// SQLitePathForWorld returns the SQLite database path for a given world.
+func SQLitePathForWorld(basePath, worldName string) string {
+	return filepath.Join(basePath, DefaultConfigDir, "worlds", SanitizeWorldName(worldName), "lore.db")
+}
+
+// WorldDir returns the directory path for a given world.
+func WorldDir(basePath, worldName string) string {
+	return filepath.Join(basePath, DefaultConfigDir, "worlds", SanitizeWorldName(worldName))
 }
