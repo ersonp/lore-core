@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -39,37 +40,45 @@ func runQuery(cmd *cobra.Command, query string, limit int, factType string) erro
 	}
 
 	return withDeps(func(d *Deps) error {
-		var result *handlers.QueryResult
-		var err error
-		if factType != "" {
-			result, err = d.QueryHandler.HandleByType(ctx, query, entities.FactType(factType), limit)
-		} else {
-			result, err = d.QueryHandler.Handle(ctx, query, limit)
-		}
+		result, err := executeQuery(ctx, d, query, limit, factType)
 		if err != nil {
 			return fmt.Errorf("querying facts: %w", err)
 		}
 
-		if len(result.Facts) == 0 {
-			fmt.Println("No facts found.")
-			return nil
-		}
-
-		fmt.Printf("Found %d facts:\n\n", len(result.Facts))
-
-		for i := range result.Facts {
-			fmt.Printf("%d. [%s] %s %s %s\n", i+1, result.Facts[i].Type, result.Facts[i].Subject, result.Facts[i].Predicate, result.Facts[i].Object)
-			if result.Facts[i].Context != "" {
-				fmt.Printf("   Context: %s\n", result.Facts[i].Context)
-			}
-			if result.Facts[i].SourceFile != "" {
-				fmt.Printf("   Source: %s\n", result.Facts[i].SourceFile)
-			}
-			fmt.Println()
-		}
-
+		printQueryResults(result)
 		return nil
 	})
+}
+
+func executeQuery(ctx context.Context, d *Deps, query string, limit int, factType string) (*handlers.QueryResult, error) {
+	if factType != "" {
+		return d.QueryHandler.HandleByType(ctx, query, entities.FactType(factType), limit)
+	}
+	return d.QueryHandler.Handle(ctx, query, limit)
+}
+
+func printQueryResults(result *handlers.QueryResult) {
+	if len(result.Facts) == 0 {
+		fmt.Println("No facts found.")
+		return
+	}
+
+	fmt.Printf("Found %d facts:\n\n", len(result.Facts))
+
+	for i := range result.Facts {
+		printFact(i+1, &result.Facts[i])
+	}
+}
+
+func printFact(num int, fact *entities.Fact) {
+	fmt.Printf("%d. [%s] %s %s %s\n", num, fact.Type, fact.Subject, fact.Predicate, fact.Object)
+	if fact.Context != "" {
+		fmt.Printf("   Context: %s\n", fact.Context)
+	}
+	if fact.SourceFile != "" {
+		fmt.Printf("   Source: %s\n", fact.SourceFile)
+	}
+	fmt.Println()
 }
 
 func isValidType(t string) bool {

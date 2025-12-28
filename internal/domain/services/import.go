@@ -109,69 +109,13 @@ func (s *ImportService) validateFacts(rawFacts []parsers.RawFact) ([]parsers.Raw
 
 	for i := range rawFacts {
 		raw := &rawFacts[i]
-		// Use LineNum from parser if set, otherwise use 1-indexed position
 		lineNum := raw.LineNum
 		if lineNum == 0 {
 			lineNum = i + 1
 		}
 
-		// Check required fields
-		if raw.Type == "" {
-			errors = append(errors, ImportError{
-				Line:    lineNum,
-				Field:   "type",
-				Message: "missing required field: type",
-			})
-			continue
-		}
-
-		if raw.Subject == "" {
-			errors = append(errors, ImportError{
-				Line:    lineNum,
-				Field:   "subject",
-				Message: "missing required field: subject",
-			})
-			continue
-		}
-
-		if raw.Predicate == "" {
-			errors = append(errors, ImportError{
-				Line:    lineNum,
-				Field:   "predicate",
-				Message: "missing required field: predicate",
-			})
-			continue
-		}
-
-		if raw.Object == "" {
-			errors = append(errors, ImportError{
-				Line:    lineNum,
-				Field:   "object",
-				Message: "missing required field: object",
-			})
-			continue
-		}
-
-		// Validate type
-		factType := entities.FactType(raw.Type)
-		if !factType.IsValid() {
-			errors = append(errors, ImportError{
-				Line:    lineNum,
-				Field:   "type",
-				Value:   raw.Type,
-				Message: fmt.Sprintf("invalid type %q (valid: character, location, event, relationship, rule, timeline)", raw.Type),
-			})
-			continue
-		}
-
-		// Validate confidence range (only if explicitly set)
-		if raw.Confidence != nil && (*raw.Confidence < 0 || *raw.Confidence > 1) {
-			errors = append(errors, ImportError{
-				Line:    lineNum,
-				Field:   "confidence",
-				Value:   fmt.Sprintf("%f", *raw.Confidence),
-				Message: "confidence must be between 0 and 1",
-			})
+		if err := validateRawFact(raw, lineNum); err != nil {
+			errors = append(errors, *err)
 			continue
 		}
 
@@ -179,6 +123,43 @@ func (s *ImportService) validateFacts(rawFacts []parsers.RawFact) ([]parsers.Raw
 	}
 
 	return valid, errors
+}
+
+// validateRawFact validates a single raw fact and returns an error if invalid.
+func validateRawFact(raw *parsers.RawFact, lineNum int) *ImportError {
+	if raw.Type == "" {
+		return &ImportError{Line: lineNum, Field: "type", Message: "missing required field: type"}
+	}
+	if raw.Subject == "" {
+		return &ImportError{Line: lineNum, Field: "subject", Message: "missing required field: subject"}
+	}
+	if raw.Predicate == "" {
+		return &ImportError{Line: lineNum, Field: "predicate", Message: "missing required field: predicate"}
+	}
+	if raw.Object == "" {
+		return &ImportError{Line: lineNum, Field: "object", Message: "missing required field: object"}
+	}
+
+	factType := entities.FactType(raw.Type)
+	if !factType.IsValid() {
+		return &ImportError{
+			Line:    lineNum,
+			Field:   "type",
+			Value:   raw.Type,
+			Message: fmt.Sprintf("invalid type %q (valid: character, location, event, relationship, rule, timeline)", raw.Type),
+		}
+	}
+
+	if raw.Confidence != nil && (*raw.Confidence < 0 || *raw.Confidence > 1) {
+		return &ImportError{
+			Line:    lineNum,
+			Field:   "confidence",
+			Value:   fmt.Sprintf("%f", *raw.Confidence),
+			Message: "confidence must be between 0 and 1",
+		}
+	}
+
+	return nil
 }
 
 // convertToEntities converts raw facts to domain entities.

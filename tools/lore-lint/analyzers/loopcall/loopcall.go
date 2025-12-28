@@ -91,18 +91,26 @@ func hasNolintDirective(pass *analysis.Pass, pos token.Pos) bool {
 	line := file.Line(pos)
 
 	for _, f := range pass.Files {
-		for _, cg := range f.Comments {
-			for _, c := range cg.List {
-				commentLine := file.Line(c.Pos())
-				// Check comment on same line or line before
-				if commentLine == line || commentLine == line-1 {
-					if strings.Contains(c.Text, "nolint:loopcall") {
-						return true
-					}
-				}
-			}
+		if hasNolintInFile(f, file, line) {
+			return true
 		}
 	}
 
+	return false
+}
+
+// hasNolintInFile checks if a file has a nolint:loopcall comment for the given line.
+func hasNolintInFile(f *ast.File, file *token.File, line int) bool {
+	for _, cg := range f.Comments {
+		for _, c := range cg.List {
+			commentLine := file.Line(c.Pos())
+			if commentLine != line && commentLine != line-1 {
+				continue
+			}
+			if strings.Contains(c.Text, "nolint:loopcall") {
+				return true
+			}
+		}
+	}
 	return false
 }
