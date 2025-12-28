@@ -92,6 +92,8 @@ linters-settings:
       - rangeValCopy
       - hugeParam
       - indexAlloc
+      # Resource safety
+      - deferInLoop
       # Correctness
       - sloppyReassign
       # Style that affects performance
