@@ -201,7 +201,7 @@ func (r *Repository) queryRelationships(ctx context.Context, query string, args 
 	}
 	defer rows.Close()
 
-	var relationships []entities.Relationship
+	relationships := make([]entities.Relationship, 0, 16)
 	for rows.Next() {
 		var rel entities.Relationship
 		var relType string
@@ -261,7 +261,7 @@ func (r *Repository) FindVersionsByFact(ctx context.Context, factID string) ([]e
 	}
 	defer rows.Close()
 
-	var versions []entities.FactVersion
+	versions := make([]entities.FactVersion, 0, 16)
 	for rows.Next() {
 		v, err := r.scanFactVersion(rows)
 		if err != nil {
@@ -409,7 +409,7 @@ func (r *Repository) ListEntityTypes(ctx context.Context) ([]entities.EntityType
 	}
 	defer rows.Close()
 
-	var entityTypes []entities.EntityType
+	entityTypes := make([]entities.EntityType, 0, 16)
 	for rows.Next() {
 		var et entities.EntityType
 		var description sql.NullString
@@ -492,7 +492,7 @@ func (r *Repository) queryAuditLog(ctx context.Context, query string, args ...an
 	}
 	defer rows.Close()
 
-	var entries []entities.AuditEntry
+	entries := make([]entities.AuditEntry, 0, 16)
 	for rows.Next() {
 		var entry entities.AuditEntry
 		var factID, details sql.NullString
