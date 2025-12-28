@@ -177,9 +177,13 @@ for _, f := range facts {
 }
 
 // GOOD - use slices.MinFunc (Go 1.21+)
-oldest := slices.MinFunc(facts, func(a, b Fact) int {
-    return a.CreatedAt.Compare(b.CreatedAt)
-})
+// Note: MinFunc panics on empty slice, check first
+if len(facts) > 0 {
+    oldest := slices.MinFunc(facts, func(a, b Fact) int {
+        return a.CreatedAt.Compare(b.CreatedAt)
+    })
+    // use oldest
+}
 ```
 
 **Review guidance**: If only `[0]` or `[len-1]` is accessed after sort, suggest `slices.MinFunc`/`slices.MaxFunc` or linear scan.
