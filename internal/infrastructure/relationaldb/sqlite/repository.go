@@ -122,32 +122,102 @@ func (r *Repository) EnsureSchema(ctx context.Context) error {
 
 // SaveRelationship saves or updates a relationship.
 func (r *Repository) SaveRelationship(ctx context.Context, rel *entities.Relationship) error {
-	// TODO: Implement in Task 06
+	query := `
+		INSERT INTO relationships (id, source_fact_id, target_fact_id, type, bidirectional, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			source_fact_id = excluded.source_fact_id,
+			target_fact_id = excluded.target_fact_id,
+			type = excluded.type,
+			bidirectional = excluded.bidirectional
+	`
+	_, err := r.db.ExecContext(ctx, query,
+		rel.ID,
+		rel.SourceFactID,
+		rel.TargetFactID,
+		string(rel.Type),
+		rel.Bidirectional,
+		rel.CreatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("saving relationship: %w", err)
+	}
 	return nil
 }
 
 // FindRelationshipsByFact finds all relationships involving a fact.
+// Returns relationships where the fact is source, or target if bidirectional.
 func (r *Repository) FindRelationshipsByFact(ctx context.Context, factID string) ([]entities.Relationship, error) {
-	// TODO: Implement in Task 06
-	return nil, nil
+	query := `
+		SELECT id, source_fact_id, target_fact_id, type, bidirectional, created_at
+		FROM relationships
+		WHERE source_fact_id = ? OR (target_fact_id = ? AND bidirectional = 1)
+		ORDER BY created_at DESC
+	`
+	return r.queryRelationships(ctx, query, factID, factID)
 }
 
 // FindRelationshipsByType finds all relationships of a given type.
 func (r *Repository) FindRelationshipsByType(ctx context.Context, relType string) ([]entities.Relationship, error) {
-	// TODO: Implement in Task 06
-	return nil, nil
+	query := `
+		SELECT id, source_fact_id, target_fact_id, type, bidirectional, created_at
+		FROM relationships
+		WHERE type = ?
+		ORDER BY created_at DESC
+	`
+	return r.queryRelationships(ctx, query, relType)
 }
 
 // DeleteRelationship deletes a relationship by ID.
 func (r *Repository) DeleteRelationship(ctx context.Context, id string) error {
-	// TODO: Implement in Task 06
+	query := `DELETE FROM relationships WHERE id = ?`
+	result, err := r.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("deleting relationship: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("relationship not found: %s", id)
+	}
 	return nil
 }
 
 // DeleteRelationshipsByFact deletes all relationships involving a fact.
 func (r *Repository) DeleteRelationshipsByFact(ctx context.Context, factID string) error {
-	// TODO: Implement in Task 06
+	query := `DELETE FROM relationships WHERE source_fact_id = ? OR target_fact_id = ?`
+	_, err := r.db.ExecContext(ctx, query, factID, factID)
+	if err != nil {
+		return fmt.Errorf("deleting relationships by fact: %w", err)
+	}
 	return nil
+}
+
+// queryRelationships is a helper to execute relationship queries.
+func (r *Repository) queryRelationships(ctx context.Context, query string, args ...any) ([]entities.Relationship, error) {
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying relationships: %w", err)
+	}
+	defer rows.Close()
+
+	var relationships []entities.Relationship
+	for rows.Next() {
+		var rel entities.Relationship
+		var relType string
+		if err := rows.Scan(
+			&rel.ID,
+			&rel.SourceFactID,
+			&rel.TargetFactID,
+			&relType,
+			&rel.Bidirectional,
+			&rel.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scanning relationship: %w", err)
+		}
+		rel.Type = entities.RelationType(relType)
+		relationships = append(relationships, rel)
+	}
+	return relationships, rows.Err()
 }
 
 // SaveVersion saves a new fact version.
