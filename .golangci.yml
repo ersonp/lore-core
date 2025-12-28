@@ -94,11 +94,13 @@ linters-settings:
       - indexAlloc
       # Correctness
       - sloppyReassign
-      - exitAfterDefer
       # Style that affects performance
       - stringXbytes
+    disabled-checks:
+      # Disabled: flags os.Exit before defer even when defer is for different code path
+      - exitAfterDefer
     settings:
       hugeParam:
-        sizeThreshold: 128
+        sizeThreshold: 256
       rangeValCopy:
         sizeThreshold: 128

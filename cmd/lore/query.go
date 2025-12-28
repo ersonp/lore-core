@@ -57,13 +57,13 @@ func runQuery(cmd *cobra.Command, query string, limit int, factType string) erro
 
 		fmt.Printf("Found %d facts:\n\n", len(result.Facts))
 
-		for i, fact := range result.Facts {
-			fmt.Printf("%d. [%s] %s %s %s\n", i+1, fact.Type, fact.Subject, fact.Predicate, fact.Object)
-			if fact.Context != "" {
-				fmt.Printf("   Context: %s\n", fact.Context)
+		for i := range result.Facts {
+			fmt.Printf("%d. [%s] %s %s %s\n", i+1, result.Facts[i].Type, result.Facts[i].Subject, result.Facts[i].Predicate, result.Facts[i].Object)
+			if result.Facts[i].Context != "" {
+				fmt.Printf("   Context: %s\n", result.Facts[i].Context)
 			}
-			if fact.SourceFile != "" {
-				fmt.Printf("   Source: %s\n", fact.SourceFile)
+			if result.Facts[i].SourceFile != "" {
+				fmt.Printf("   Source: %s\n", result.Facts[i].SourceFile)
 			}
 			fmt.Println()
 		}

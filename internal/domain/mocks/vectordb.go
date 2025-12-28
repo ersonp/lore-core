@@ -55,9 +55,9 @@ func (m *VectorDB) FindByID(ctx context.Context, id string) (entities.Fact, erro
 	if m.Err != nil {
 		return entities.Fact{}, m.Err
 	}
-	for _, f := range m.Facts {
-		if f.ID == id {
-			return f, nil
+	for i := range m.Facts {
+		if m.Facts[i].ID == id {
+			return m.Facts[i], nil
 		}
 	}
 	// Return FindByIDErr when fact not found (mimics real behavior)
@@ -74,8 +74,8 @@ func (m *VectorDB) ExistsByIDs(ctx context.Context, ids []string) (map[string]bo
 	}
 	exists := make(map[string]bool, len(ids))
 	for _, id := range ids {
-		for _, f := range m.Facts {
-			if f.ID == id {
+		for i := range m.Facts {
+			if m.Facts[i].ID == id {
 				exists[id] = true
 				break
 			}
@@ -91,9 +91,9 @@ func (m *VectorDB) FindByIDs(ctx context.Context, ids []string) ([]entities.Fact
 	}
 	var facts []entities.Fact
 	for _, id := range ids {
-		for _, f := range m.Facts {
-			if f.ID == id {
-				facts = append(facts, f)
+		for i := range m.Facts {
+			if m.Facts[i].ID == id {
+				facts = append(facts, m.Facts[i])
 				break
 			}
 		}
@@ -118,9 +118,9 @@ func (m *VectorDB) SearchByType(ctx context.Context, embedding []float32, factTy
 		return nil, m.Err
 	}
 	var filtered []entities.Fact
-	for _, f := range m.Facts {
-		if f.Type == factType {
-			filtered = append(filtered, f)
+	for i := range m.Facts {
+		if m.Facts[i].Type == factType {
+			filtered = append(filtered, m.Facts[i])
 		}
 	}
 	if limit > len(filtered) {
@@ -148,9 +148,9 @@ func (m *VectorDB) ListByType(ctx context.Context, factType entities.FactType, l
 		return nil, m.Err
 	}
 	var filtered []entities.Fact
-	for _, f := range m.Facts {
-		if f.Type == factType {
-			filtered = append(filtered, f)
+	for i := range m.Facts {
+		if m.Facts[i].Type == factType {
+			filtered = append(filtered, m.Facts[i])
 		}
 	}
 	return filtered, nil
@@ -162,9 +162,9 @@ func (m *VectorDB) ListBySource(ctx context.Context, sourceFile string, limit in
 		return nil, m.Err
 	}
 	var filtered []entities.Fact
-	for _, f := range m.Facts {
-		if f.SourceFile == sourceFile {
-			filtered = append(filtered, f)
+	for i := range m.Facts {
+		if m.Facts[i].SourceFile == sourceFile {
+			filtered = append(filtered, m.Facts[i])
 		}
 	}
 	return filtered, nil

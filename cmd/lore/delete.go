@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -59,7 +60,7 @@ func runDelete(cmd *cobra.Command, args []string, flags deleteFlags) error {
 		case len(args) > 0:
 			return d.deleteByID(ctx, args[0])
 		default:
-			return fmt.Errorf("specify a fact ID, --source, or --all")
+			return errors.New("specify a fact ID, --source, or --all")
 		}
 	})
 }

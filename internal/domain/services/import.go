@@ -104,10 +104,11 @@ func (s *ImportService) Import(ctx context.Context, rawFacts []parsers.RawFact, 
 
 // validateFacts validates raw facts and returns valid ones with any errors.
 func (s *ImportService) validateFacts(rawFacts []parsers.RawFact) ([]parsers.RawFact, []ImportError) {
-	var valid []parsers.RawFact
+	valid := make([]parsers.RawFact, 0, len(rawFacts))
 	var errors []ImportError
 
-	for i, raw := range rawFacts {
+	for i := range rawFacts {
+		raw := &rawFacts[i]
 		// Use LineNum from parser if set, otherwise use 1-indexed position
 		lineNum := raw.LineNum
 		if lineNum == 0 {
@@ -174,7 +175,7 @@ func (s *ImportService) validateFacts(rawFacts []parsers.RawFact) ([]parsers.Raw
 			continue
 		}
 
-		valid = append(valid, raw)
+		valid = append(valid, *raw)
 	}
 
 	return valid, errors
@@ -185,7 +186,8 @@ func (s *ImportService) convertToEntities(rawFacts []parsers.RawFact) []entities
 	facts := make([]entities.Fact, 0, len(rawFacts))
 	now := time.Now()
 
-	for _, raw := range rawFacts {
+	for i := range rawFacts {
+		raw := &rawFacts[i]
 		id := raw.ID
 		if id == "" {
 			id = uuid.New().String()
@@ -219,8 +221,8 @@ func (s *ImportService) convertToEntities(rawFacts []parsers.RawFact) []entities
 // generateEmbeddings generates embeddings for all facts.
 func (s *ImportService) generateEmbeddings(ctx context.Context, facts []entities.Fact) error {
 	texts := make([]string, len(facts))
-	for i, f := range facts {
-		texts[i] = factToText(f)
+	for i := range facts {
+		texts[i] = factToText(&facts[i])
 	}
 
 	embeddings, err := s.embedder.EmbedBatch(ctx, texts)
@@ -271,8 +273,8 @@ func (s *ImportService) preserveCreatedAt(ctx context.Context, facts []entities.
 
 	// Collect IDs to look up
 	ids := make([]string, len(facts))
-	for i, fact := range facts {
-		ids[i] = fact.ID
+	for i := range facts {
+		ids[i] = facts[i].ID
 	}
 
 	// Get existing facts' timestamps
@@ -299,8 +301,8 @@ func (s *ImportService) getExistingCreatedAt(ctx context.Context, ids []string) 
 	}
 
 	createdAtMap := make(map[string]time.Time, len(existingFacts))
-	for _, fact := range existingFacts {
-		createdAtMap[fact.ID] = fact.CreatedAt
+	for i := range existingFacts {
+		createdAtMap[existingFacts[i].ID] = existingFacts[i].CreatedAt
 	}
 
 	return createdAtMap, nil
@@ -314,8 +316,8 @@ func (s *ImportService) filterExisting(ctx context.Context, facts []entities.Fac
 
 	// Collect all IDs for batch lookup
 	ids := make([]string, len(facts))
-	for i, fact := range facts {
-		ids[i] = fact.ID
+	for i := range facts {
+		ids[i] = facts[i].ID
 	}
 
 	// Single batch query instead of N queries
@@ -327,11 +329,11 @@ func (s *ImportService) filterExisting(ctx context.Context, facts []entities.Fac
 	// Filter out existing facts
 	toSave := make([]entities.Fact, 0, len(facts))
 	var skipped int
-	for _, fact := range facts {
-		if exists[fact.ID] {
+	for i := range facts {
+		if exists[facts[i].ID] {
 			skipped++
 		} else {
-			toSave = append(toSave, fact)
+			toSave = append(toSave, facts[i])
 		}
 	}
 

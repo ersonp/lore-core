@@ -85,8 +85,8 @@ func (s *ExtractionService) ExtractAndStoreWithOptions(ctx context.Context, text
 	}
 
 	texts := make([]string, len(allFacts))
-	for i, fact := range allFacts {
-		texts[i] = factToText(fact)
+	for i := range allFacts {
+		texts[i] = factToText(&allFacts[i])
 	}
 
 	embeddings, err := s.embedder.EmbedBatch(ctx, texts)
@@ -258,8 +258,8 @@ func (s *ExtractionService) ExtractFromReader(ctx context.Context, r io.Reader, 
 // finalizeFacts generates embeddings, checks consistency, and saves facts.
 func (s *ExtractionService) finalizeFacts(ctx context.Context, facts []entities.Fact, opts ExtractionOptions) (*ExtractionResult, error) {
 	texts := make([]string, len(facts))
-	for i, fact := range facts {
-		texts[i] = factToText(fact)
+	for i := range facts {
+		texts[i] = factToText(&facts[i])
 	}
 
 	embeddings, err := s.embedder.EmbedBatch(ctx, texts)
@@ -300,17 +300,17 @@ func (s *ExtractionService) checkConsistency(ctx context.Context, newFacts []ent
 	var allSimilarFacts []entities.Fact
 	seenIDs := make(map[string]bool)
 
-	for _, fact := range newFacts {
-		similarFacts, err := s.vectorDB.SearchByType(ctx, fact.Embedding, fact.Type, 5)
+	for i := range newFacts {
+		similarFacts, err := s.vectorDB.SearchByType(ctx, newFacts[i].Embedding, newFacts[i].Type, 5)
 		if err != nil {
 			return nil, fmt.Errorf("searching similar facts: %w", err)
 		}
 
 		// Deduplicate similar facts
-		for _, sf := range similarFacts {
-			if !seenIDs[sf.ID] {
-				seenIDs[sf.ID] = true
-				allSimilarFacts = append(allSimilarFacts, sf)
+		for j := range similarFacts {
+			if !seenIDs[similarFacts[j].ID] {
+				seenIDs[similarFacts[j].ID] = true
+				allSimilarFacts = append(allSimilarFacts, similarFacts[j])
 			}
 		}
 	}
@@ -378,7 +378,7 @@ func getOverlapText(text string, n int) string {
 }
 
 // factToText converts a fact to searchable text for embedding.
-func factToText(fact entities.Fact) string {
+func factToText(fact *entities.Fact) string {
 	parts := []string{
 		fact.Subject,
 		fact.Predicate,

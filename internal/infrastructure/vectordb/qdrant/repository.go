@@ -83,8 +83,8 @@ func (r *Repository) Save(ctx context.Context, fact entities.Fact) error {
 func (r *Repository) SaveBatch(ctx context.Context, facts []entities.Fact) error {
 	points := make([]*pb.PointStruct, 0, len(facts))
 
-	for _, fact := range facts {
-		pointID := fact.ID
+	for i := range facts {
+		pointID := facts[i].ID
 		if pointID == "" {
 			pointID = uuid.New().String()
 		}
@@ -98,21 +98,21 @@ func (r *Repository) SaveBatch(ctx context.Context, facts []entities.Fact) error
 			Vectors: &pb.Vectors{
 				VectorsOptions: &pb.Vectors_Vector{
 					Vector: &pb.Vector{
-						Data: fact.Embedding,
+						Data: facts[i].Embedding,
 					},
 				},
 			},
 			Payload: map[string]*pb.Value{
-				"type":        {Kind: &pb.Value_StringValue{StringValue: string(fact.Type)}},
-				"subject":     {Kind: &pb.Value_StringValue{StringValue: fact.Subject}},
-				"predicate":   {Kind: &pb.Value_StringValue{StringValue: fact.Predicate}},
-				"object":      {Kind: &pb.Value_StringValue{StringValue: fact.Object}},
-				"context":     {Kind: &pb.Value_StringValue{StringValue: fact.Context}},
-				"source_file": {Kind: &pb.Value_StringValue{StringValue: fact.SourceFile}},
-				"source_line": {Kind: &pb.Value_IntegerValue{IntegerValue: int64(fact.SourceLine)}},
-				"confidence":  {Kind: &pb.Value_DoubleValue{DoubleValue: fact.Confidence}},
-				"created_at":  {Kind: &pb.Value_StringValue{StringValue: fact.CreatedAt.Format("2006-01-02T15:04:05Z07:00")}},
-				"updated_at":  {Kind: &pb.Value_StringValue{StringValue: fact.UpdatedAt.Format("2006-01-02T15:04:05Z07:00")}},
+				"type":        {Kind: &pb.Value_StringValue{StringValue: string(facts[i].Type)}},
+				"subject":     {Kind: &pb.Value_StringValue{StringValue: facts[i].Subject}},
+				"predicate":   {Kind: &pb.Value_StringValue{StringValue: facts[i].Predicate}},
+				"object":      {Kind: &pb.Value_StringValue{StringValue: facts[i].Object}},
+				"context":     {Kind: &pb.Value_StringValue{StringValue: facts[i].Context}},
+				"source_file": {Kind: &pb.Value_StringValue{StringValue: facts[i].SourceFile}},
+				"source_line": {Kind: &pb.Value_IntegerValue{IntegerValue: int64(facts[i].SourceLine)}},
+				"confidence":  {Kind: &pb.Value_DoubleValue{DoubleValue: facts[i].Confidence}},
+				"created_at":  {Kind: &pb.Value_StringValue{StringValue: facts[i].CreatedAt.Format("2006-01-02T15:04:05Z07:00")}},
+				"updated_at":  {Kind: &pb.Value_StringValue{StringValue: facts[i].UpdatedAt.Format("2006-01-02T15:04:05Z07:00")}},
 			},
 		}
 		points = append(points, point)
