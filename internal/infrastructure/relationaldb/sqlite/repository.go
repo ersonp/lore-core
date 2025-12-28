@@ -4,6 +4,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -222,49 +223,217 @@ func (r *Repository) queryRelationships(ctx context.Context, query string, args 
 
 // SaveVersion saves a new fact version.
 func (r *Repository) SaveVersion(ctx context.Context, version *entities.FactVersion) error {
-	// TODO: Implement in Task 07
+	data, err := json.Marshal(version.Data)
+	if err != nil {
+		return fmt.Errorf("marshaling fact data: %w", err)
+	}
+
+	query := `
+		INSERT INTO fact_versions (id, fact_id, version, change_type, data, reason, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err = r.db.ExecContext(ctx, query,
+		version.ID,
+		version.FactID,
+		version.Version,
+		string(version.ChangeType),
+		string(data),
+		version.Reason,
+		version.CreatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("saving fact version: %w", err)
+	}
 	return nil
 }
 
-// FindVersionsByFact finds all versions of a fact.
+// FindVersionsByFact finds all versions of a fact, ordered by version descending.
 func (r *Repository) FindVersionsByFact(ctx context.Context, factID string) ([]entities.FactVersion, error) {
-	// TODO: Implement in Task 07
-	return nil, nil
+	query := `
+		SELECT id, fact_id, version, change_type, data, reason, created_at
+		FROM fact_versions
+		WHERE fact_id = ?
+		ORDER BY version DESC
+	`
+	rows, err := r.db.QueryContext(ctx, query, factID)
+	if err != nil {
+		return nil, fmt.Errorf("querying fact versions: %w", err)
+	}
+	defer rows.Close()
+
+	var versions []entities.FactVersion
+	for rows.Next() {
+		v, err := r.scanFactVersion(rows)
+		if err != nil {
+			return nil, err
+		}
+		versions = append(versions, *v)
+	}
+	return versions, rows.Err()
 }
 
 // FindLatestVersion finds the most recent version of a fact.
 func (r *Repository) FindLatestVersion(ctx context.Context, factID string) (*entities.FactVersion, error) {
-	// TODO: Implement in Task 07
-	return nil, nil
+	query := `
+		SELECT id, fact_id, version, change_type, data, reason, created_at
+		FROM fact_versions
+		WHERE fact_id = ?
+		ORDER BY version DESC
+		LIMIT 1
+	`
+	row := r.db.QueryRowContext(ctx, query, factID)
+
+	var v entities.FactVersion
+	var changeType, data string
+	var reason sql.NullString
+
+	err := row.Scan(
+		&v.ID,
+		&v.FactID,
+		&v.Version,
+		&changeType,
+		&data,
+		&reason,
+		&v.CreatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scanning fact version: %w", err)
+	}
+
+	v.ChangeType = entities.ChangeType(changeType)
+	v.Reason = reason.String
+
+	if err := json.Unmarshal([]byte(data), &v.Data); err != nil {
+		return nil, fmt.Errorf("unmarshaling fact data: %w", err)
+	}
+
+	return &v, nil
 }
 
 // CountVersions counts how many versions a fact has.
 func (r *Repository) CountVersions(ctx context.Context, factID string) (int, error) {
-	// TODO: Implement in Task 07
-	return 0, nil
+	query := `SELECT COUNT(*) FROM fact_versions WHERE fact_id = ?`
+	var count int
+	err := r.db.QueryRowContext(ctx, query, factID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("counting versions: %w", err)
+	}
+	return count, nil
+}
+
+// scanFactVersion is a helper to scan a fact version row.
+func (r *Repository) scanFactVersion(rows *sql.Rows) (*entities.FactVersion, error) {
+	var v entities.FactVersion
+	var changeType, data string
+	var reason sql.NullString
+
+	err := rows.Scan(
+		&v.ID,
+		&v.FactID,
+		&v.Version,
+		&changeType,
+		&data,
+		&reason,
+		&v.CreatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("scanning fact version: %w", err)
+	}
+
+	v.ChangeType = entities.ChangeType(changeType)
+	v.Reason = reason.String
+
+	if err := json.Unmarshal([]byte(data), &v.Data); err != nil {
+		return nil, fmt.Errorf("unmarshaling fact data: %w", err)
+	}
+
+	return &v, nil
 }
 
 // SaveEntityType saves or updates a custom entity type.
 func (r *Repository) SaveEntityType(ctx context.Context, entityType *entities.EntityType) error {
-	// TODO: Implement in Task 08
+	query := `
+		INSERT INTO entity_types (name, description, created_at)
+		VALUES (?, ?, ?)
+		ON CONFLICT(name) DO UPDATE SET
+			description = excluded.description
+	`
+	_, err := r.db.ExecContext(ctx, query,
+		entityType.Name,
+		entityType.Description,
+		entityType.CreatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("saving entity type: %w", err)
+	}
 	return nil
 }
 
 // FindEntityType finds a custom entity type by name.
 func (r *Repository) FindEntityType(ctx context.Context, name string) (*entities.EntityType, error) {
-	// TODO: Implement in Task 08
-	return nil, nil
+	query := `
+		SELECT name, description, created_at
+		FROM entity_types
+		WHERE name = ?
+	`
+	row := r.db.QueryRowContext(ctx, query, name)
+
+	var et entities.EntityType
+	var description sql.NullString
+
+	err := row.Scan(&et.Name, &description, &et.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scanning entity type: %w", err)
+	}
+
+	et.Description = description.String
+	return &et, nil
 }
 
 // ListEntityTypes lists all custom entity types.
 func (r *Repository) ListEntityTypes(ctx context.Context) ([]entities.EntityType, error) {
-	// TODO: Implement in Task 08
-	return nil, nil
+	query := `
+		SELECT name, description, created_at
+		FROM entity_types
+		ORDER BY name ASC
+	`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("querying entity types: %w", err)
+	}
+	defer rows.Close()
+
+	var entityTypes []entities.EntityType
+	for rows.Next() {
+		var et entities.EntityType
+		var description sql.NullString
+
+		if err := rows.Scan(&et.Name, &description, &et.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scanning entity type: %w", err)
+		}
+		et.Description = description.String
+		entityTypes = append(entityTypes, et)
+	}
+	return entityTypes, rows.Err()
 }
 
 // DeleteEntityType deletes a custom entity type by name.
 func (r *Repository) DeleteEntityType(ctx context.Context, name string) error {
-	// TODO: Implement in Task 08
+	query := `DELETE FROM entity_types WHERE name = ?`
+	result, err := r.db.ExecContext(ctx, query, name)
+	if err != nil {
+		return fmt.Errorf("deleting entity type: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("entity type not found: %s", name)
+	}
 	return nil
 }
 
