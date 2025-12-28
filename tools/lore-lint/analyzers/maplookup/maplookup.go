@@ -3,6 +3,7 @@ package maplookup
 
 import (
 	"go/ast"
+	"go/types"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
@@ -35,12 +36,12 @@ func run(pass *analysis.Pass) (interface{}, error) {
 			return
 		}
 
-		condLookups := findMapLookups(ifStmt.Cond)
+		condLookups := findMapLookups(pass, ifStmt.Cond)
 		if len(condLookups) == 0 {
 			return
 		}
 
-		bodyLookups := findMapLookupsInBlock(ifStmt.Body)
+		bodyLookups := findMapLookupsInBlock(pass, ifStmt.Body)
 
 		for _, condLookup := range condLookups {
 			for _, bodyLookup := range bodyLookups {
@@ -55,10 +56,25 @@ func run(pass *analysis.Pass) (interface{}, error) {
 	return nil, nil
 }
 
-func findMapLookups(expr ast.Expr) []*ast.IndexExpr {
+// isMapType checks if the expression is a map type.
+func isMapType(pass *analysis.Pass, expr ast.Expr) bool {
+	tv := pass.TypesInfo.TypeOf(expr)
+	if tv == nil {
+		return false
+	}
+	_, ok := tv.Underlying().(*types.Map)
+	return ok
+}
+
+func findMapLookups(pass *analysis.Pass, expr ast.Expr) []*ast.IndexExpr {
 	var lookups []*ast.IndexExpr
 	ast.Inspect(expr, func(n ast.Node) bool {
-		if idx, ok := n.(*ast.IndexExpr); ok {
+		idx, ok := n.(*ast.IndexExpr)
+		if !ok {
+			return true
+		}
+		// Only include actual map lookups, not slice indexing
+		if isMapType(pass, idx.X) {
 			lookups = append(lookups, idx)
 		}
 		return true
@@ -66,11 +82,34 @@ func findMapLookups(expr ast.Expr) []*ast.IndexExpr {
 	return lookups
 }
 
-func findMapLookupsInBlock(block *ast.BlockStmt) []*ast.IndexExpr {
+func findMapLookupsInBlock(pass *analysis.Pass, block *ast.BlockStmt) []*ast.IndexExpr {
 	var lookups []*ast.IndexExpr
 	for _, stmt := range block.List {
+		// Skip assignments where map lookup is on the left side (setting, not getting)
+		if assign, ok := stmt.(*ast.AssignStmt); ok {
+			// Check right-hand side only
+			for _, rhs := range assign.Rhs {
+				ast.Inspect(rhs, func(n ast.Node) bool {
+					idx, ok := n.(*ast.IndexExpr)
+					if !ok {
+						return true
+					}
+					if isMapType(pass, idx.X) {
+						lookups = append(lookups, idx)
+					}
+					return true
+				})
+			}
+			continue
+		}
+
+		// For other statements, inspect normally
 		ast.Inspect(stmt, func(n ast.Node) bool {
-			if idx, ok := n.(*ast.IndexExpr); ok {
+			idx, ok := n.(*ast.IndexExpr)
+			if !ok {
+				return true
+			}
+			if isMapType(pass, idx.X) {
 				lookups = append(lookups, idx)
 			}
 			return true
