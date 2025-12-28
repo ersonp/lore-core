@@ -80,6 +80,7 @@ func (p *CSVParser) parseRecord(record []string, colIndex map[string]int, lineNu
 		Context:    getColumn(record, colIndex, "context"),
 		ID:         getColumn(record, colIndex, "id"),
 		SourceFile: getColumn(record, colIndex, "source_file"),
+		LineNum:    lineNum,
 	}
 
 	confStr := getColumn(record, colIndex, "confidence")
@@ -88,7 +89,7 @@ func (p *CSVParser) parseRecord(record []string, colIndex map[string]int, lineNu
 		if err != nil {
 			return RawFact{}, fmt.Errorf("line %d: invalid confidence value %q: %w", lineNum, confStr, err)
 		}
-		fact.Confidence = conf
+		fact.Confidence = &conf
 	}
 
 	return fact, nil

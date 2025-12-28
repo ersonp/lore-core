@@ -67,6 +67,23 @@ func (m *VectorDB) FindByID(ctx context.Context, id string) (entities.Fact, erro
 	return entities.Fact{}, fmt.Errorf("fact not found: %s", id)
 }
 
+// ExistsByIDs checks which IDs exist in the mock database.
+func (m *VectorDB) ExistsByIDs(ctx context.Context, ids []string) (map[string]bool, error) {
+	if m.Err != nil {
+		return nil, m.Err
+	}
+	exists := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		for _, f := range m.Facts {
+			if f.ID == id {
+				exists[id] = true
+				break
+			}
+		}
+	}
+	return exists, nil
+}
+
 // Search finds facts by embedding similarity.
 func (m *VectorDB) Search(ctx context.Context, embedding []float32, limit int) ([]entities.Fact, error) {
 	if m.Err != nil {

@@ -26,6 +26,10 @@ type VectorDB interface {
 	// FindByID retrieves a fact by its ID.
 	FindByID(ctx context.Context, id string) (entities.Fact, error)
 
+	// ExistsByIDs checks which IDs exist in the database.
+	// Returns a map where keys are IDs and values indicate existence.
+	ExistsByIDs(ctx context.Context, ids []string) (map[string]bool, error)
+
 	// Search performs a semantic search and returns similar facts.
 	Search(ctx context.Context, embedding []float32, limit int) ([]entities.Fact, error)
 

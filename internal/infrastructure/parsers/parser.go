@@ -9,14 +9,15 @@ import (
 
 // RawFact represents a fact parsed from an external source before validation.
 type RawFact struct {
-	ID         string  `json:"id,omitempty"`
-	Type       string  `json:"type"`
-	Subject    string  `json:"subject"`
-	Predicate  string  `json:"predicate"`
-	Object     string  `json:"object"`
-	Context    string  `json:"context,omitempty"`
-	SourceFile string  `json:"source_file,omitempty"`
-	Confidence float64 `json:"confidence,omitempty"`
+	ID         string   `json:"id,omitempty"`
+	Type       string   `json:"type"`
+	Subject    string   `json:"subject"`
+	Predicate  string   `json:"predicate"`
+	Object     string   `json:"object"`
+	Context    string   `json:"context,omitempty"`
+	SourceFile string   `json:"source_file,omitempty"`
+	Confidence *float64 `json:"confidence,omitempty"` // Pointer to distinguish 0 from unset
+	LineNum    int      `json:"-"`                    // Line number in source file (set by parser)
 }
 
 // Parser defines the interface for parsing facts from various formats.

@@ -72,8 +72,9 @@ func TestImportService_Import_InvalidConfidence(t *testing.T) {
 	vectorDB := &mocks.VectorDB{}
 
 	service := NewImportService(embedder, vectorDB)
+	invalidConf := 1.5
 	rawFacts := []parsers.RawFact{
-		{Type: "character", Subject: "Gandalf", Predicate: "is", Object: "wizard", Confidence: 1.5},
+		{Type: "character", Subject: "Gandalf", Predicate: "is", Object: "wizard", Confidence: &invalidConf},
 	}
 
 	result, err := service.Import(context.Background(), rawFacts, ImportOptions{OnConflict: ConflictOverwrite})
@@ -82,6 +83,46 @@ func TestImportService_Import_InvalidConfidence(t *testing.T) {
 	assert.Equal(t, 0, result.Imported)
 	assert.Len(t, result.Errors, 1)
 	assert.Equal(t, "confidence", result.Errors[0].Field)
+}
+
+func TestImportService_Import_ConfidenceZero(t *testing.T) {
+	embedder := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
+	vectorDB := &mocks.VectorDB{}
+
+	service := NewImportService(embedder, vectorDB)
+	zeroConf := 0.0
+	rawFacts := []parsers.RawFact{
+		{Type: "character", Subject: "Gandalf", Predicate: "is", Object: "wizard", Confidence: &zeroConf},
+	}
+
+	result, err := service.Import(context.Background(), rawFacts, ImportOptions{OnConflict: ConflictOverwrite})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.Imported)
+	assert.Empty(t, result.Errors)
+
+	// Verify confidence=0 is preserved (not defaulted to 1.0)
+	require.Len(t, vectorDB.SaveBatchLastFacts, 1)
+	assert.Equal(t, 0.0, vectorDB.SaveBatchLastFacts[0].Confidence)
+}
+
+func TestImportService_Import_ConfidenceUnset(t *testing.T) {
+	embedder := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
+	vectorDB := &mocks.VectorDB{}
+
+	service := NewImportService(embedder, vectorDB)
+	rawFacts := []parsers.RawFact{
+		{Type: "character", Subject: "Gandalf", Predicate: "is", Object: "wizard"}, // No confidence
+	}
+
+	result, err := service.Import(context.Background(), rawFacts, ImportOptions{OnConflict: ConflictOverwrite})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.Imported)
+
+	// Verify confidence defaults to 1.0 when not set
+	require.Len(t, vectorDB.SaveBatchLastFacts, 1)
+	assert.Equal(t, 1.0, vectorDB.SaveBatchLastFacts[0].Confidence)
 }
 
 func TestImportService_Import_DryRun(t *testing.T) {

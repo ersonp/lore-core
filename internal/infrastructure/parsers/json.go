@@ -18,5 +18,10 @@ func (p *JSONParser) Parse(r io.Reader) ([]RawFact, error) {
 		return nil, fmt.Errorf("parsing JSON: %w", err)
 	}
 
+	// Set line numbers (array index + 1, 1-indexed)
+	for i := range facts {
+		facts[i].LineNum = i + 1
+	}
+
 	return facts, nil
 }

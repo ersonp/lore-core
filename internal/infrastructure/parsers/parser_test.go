@@ -9,33 +9,24 @@ import (
 )
 
 func TestJSONParser_Parse_ValidInput(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected []RawFact
-	}{
-		{
-			name:  "single fact",
-			input: `[{"type": "character", "subject": "Gandalf", "predicate": "is a", "object": "wizard"}]`,
-			expected: []RawFact{
-				{Type: "character", Subject: "Gandalf", Predicate: "is a", Object: "wizard"},
-			},
-		},
-		{
-			name:     "empty array",
-			input:    "[]",
-			expected: []RawFact{},
-		},
-	}
+	t.Run("single fact", func(t *testing.T) {
+		parser := &JSONParser{}
+		result, err := parser.Parse(strings.NewReader(`[{"type": "character", "subject": "Gandalf", "predicate": "is a", "object": "wizard"}]`))
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		assert.Equal(t, "character", result[0].Type)
+		assert.Equal(t, "Gandalf", result[0].Subject)
+		assert.Equal(t, "is a", result[0].Predicate)
+		assert.Equal(t, "wizard", result[0].Object)
+		assert.Equal(t, 1, result[0].LineNum) // JSON sets LineNum
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			parser := &JSONParser{}
-			result, err := parser.Parse(strings.NewReader(tt.input))
-			require.NoError(t, err)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
+	t.Run("empty array", func(t *testing.T) {
+		parser := &JSONParser{}
+		result, err := parser.Parse(strings.NewReader("[]"))
+		require.NoError(t, err)
+		assert.Empty(t, result)
+	})
 }
 
 func TestJSONParser_Parse_AllFields(t *testing.T) {
@@ -62,7 +53,9 @@ func TestJSONParser_Parse_AllFields(t *testing.T) {
 	assert.Equal(t, "Middle Earth", fact.Object)
 	assert.Equal(t, "The land of shadow", fact.Context)
 	assert.Equal(t, "lotr.txt", fact.SourceFile)
-	assert.Equal(t, 0.95, fact.Confidence)
+	require.NotNil(t, fact.Confidence)
+	assert.Equal(t, 0.95, *fact.Confidence)
+	assert.Equal(t, 1, fact.LineNum)
 }
 
 func TestJSONParser_Parse_InvalidInput(t *testing.T) {
@@ -72,40 +65,35 @@ func TestJSONParser_Parse_InvalidInput(t *testing.T) {
 }
 
 func TestCSVParser_Parse_ValidInput(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected []RawFact
-	}{
-		{
-			name:  "required columns only",
-			input: "type,subject,predicate,object\ncharacter,Gandalf,is a,wizard\n",
-			expected: []RawFact{
-				{Type: "character", Subject: "Gandalf", Predicate: "is a", Object: "wizard"},
-			},
-		},
-		{
-			name:     "empty CSV (header only)",
-			input:    "type,subject,predicate,object\n",
-			expected: nil,
-		},
-		{
-			name:  "columns in different order",
-			input: "object,predicate,subject,type\nwizard,is a,Gandalf,character\n",
-			expected: []RawFact{
-				{Type: "character", Subject: "Gandalf", Predicate: "is a", Object: "wizard"},
-			},
-		},
-	}
+	t.Run("required columns only", func(t *testing.T) {
+		parser := &CSVParser{}
+		result, err := parser.Parse(strings.NewReader("type,subject,predicate,object\ncharacter,Gandalf,is a,wizard\n"))
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		assert.Equal(t, "character", result[0].Type)
+		assert.Equal(t, "Gandalf", result[0].Subject)
+		assert.Equal(t, "is a", result[0].Predicate)
+		assert.Equal(t, "wizard", result[0].Object)
+		assert.Equal(t, 2, result[0].LineNum) // Line 2 (header is line 1)
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			parser := &CSVParser{}
-			result, err := parser.Parse(strings.NewReader(tt.input))
-			require.NoError(t, err)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
+	t.Run("empty CSV (header only)", func(t *testing.T) {
+		parser := &CSVParser{}
+		result, err := parser.Parse(strings.NewReader("type,subject,predicate,object\n"))
+		require.NoError(t, err)
+		assert.Empty(t, result)
+	})
+
+	t.Run("columns in different order", func(t *testing.T) {
+		parser := &CSVParser{}
+		result, err := parser.Parse(strings.NewReader("object,predicate,subject,type\nwizard,is a,Gandalf,character\n"))
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		assert.Equal(t, "character", result[0].Type)
+		assert.Equal(t, "Gandalf", result[0].Subject)
+		assert.Equal(t, "is a", result[0].Predicate)
+		assert.Equal(t, "wizard", result[0].Object)
+	})
 }
 
 func TestCSVParser_Parse_AllColumns(t *testing.T) {
@@ -124,7 +112,9 @@ func TestCSVParser_Parse_AllColumns(t *testing.T) {
 	assert.Equal(t, "Middle Earth", fact.Object)
 	assert.Equal(t, "Dark land", fact.Context)
 	assert.Equal(t, "lotr.txt", fact.SourceFile)
-	assert.Equal(t, 0.95, fact.Confidence)
+	require.NotNil(t, fact.Confidence)
+	assert.Equal(t, 0.95, *fact.Confidence)
+	assert.Equal(t, 2, fact.LineNum)
 }
 
 func TestCSVParser_Parse_Errors(t *testing.T) {

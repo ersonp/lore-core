@@ -108,7 +108,11 @@ func (s *ImportService) validateFacts(rawFacts []parsers.RawFact) ([]parsers.Raw
 	var errors []ImportError
 
 	for i, raw := range rawFacts {
-		lineNum := i + 2 // +2 for 1-indexed and header row
+		// Use LineNum from parser if set, otherwise use 1-indexed position
+		lineNum := raw.LineNum
+		if lineNum == 0 {
+			lineNum = i + 1
+		}
 
 		// Check required fields
 		if raw.Type == "" {
@@ -159,12 +163,12 @@ func (s *ImportService) validateFacts(rawFacts []parsers.RawFact) ([]parsers.Raw
 			continue
 		}
 
-		// Validate confidence range
-		if raw.Confidence < 0 || raw.Confidence > 1 {
+		// Validate confidence range (only if explicitly set)
+		if raw.Confidence != nil && (*raw.Confidence < 0 || *raw.Confidence > 1) {
 			errors = append(errors, ImportError{
 				Line:    lineNum,
 				Field:   "confidence",
-				Value:   fmt.Sprintf("%f", raw.Confidence),
+				Value:   fmt.Sprintf("%f", *raw.Confidence),
 				Message: "confidence must be between 0 and 1",
 			})
 			continue
@@ -187,9 +191,10 @@ func (s *ImportService) convertToEntities(rawFacts []parsers.RawFact) []entities
 			id = uuid.New().String()
 		}
 
-		confidence := raw.Confidence
-		if confidence == 0 {
-			confidence = 1.0 // Default confidence
+		// Use provided confidence, or default to 1.0 if not set
+		confidence := 1.0
+		if raw.Confidence != nil {
+			confidence = *raw.Confidence
 		}
 
 		fact := entities.Fact{
@@ -241,7 +246,10 @@ func (s *ImportService) saveWithConflictHandling(ctx context.Context, facts []en
 	}
 
 	// Skip mode: check each fact for existence
-	toSave, skipped := s.filterExisting(ctx, facts)
+	toSave, skipped, err := s.filterExisting(ctx, facts)
+	if err != nil {
+		return 0, 0, err
+	}
 	if len(toSave) == 0 {
 		return 0, skipped, nil
 	}
@@ -253,20 +261,33 @@ func (s *ImportService) saveWithConflictHandling(ctx context.Context, facts []en
 }
 
 // filterExisting filters out facts that already exist in the database.
-func (s *ImportService) filterExisting(ctx context.Context, facts []entities.Fact) ([]entities.Fact, int) {
-	var toSave []entities.Fact
-	var skipped int
+func (s *ImportService) filterExisting(ctx context.Context, facts []entities.Fact) ([]entities.Fact, int, error) {
+	if len(facts) == 0 {
+		return nil, 0, nil
+	}
 
+	// Collect all IDs for batch lookup
+	ids := make([]string, len(facts))
+	for i, fact := range facts {
+		ids[i] = fact.ID
+	}
+
+	// Single batch query instead of N queries
+	exists, err := s.vectorDB.ExistsByIDs(ctx, ids)
+	if err != nil {
+		return nil, 0, fmt.Errorf("checking existing facts: %w", err)
+	}
+
+	// Filter out existing facts
+	toSave := make([]entities.Fact, 0, len(facts))
+	var skipped int
 	for _, fact := range facts {
-		_, err := s.vectorDB.FindByID(ctx, fact.ID)
-		if err != nil {
-			// Fact doesn't exist, save it
-			toSave = append(toSave, fact)
-		} else {
-			// Fact exists, skip it
+		if exists[fact.ID] {
 			skipped++
+		} else {
+			toSave = append(toSave, fact)
 		}
 	}
 
-	return toSave, skipped
+	return toSave, skipped, nil
 }
