@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/ersonp/lore-core/internal/infrastructure/config"
 	embedder "github.com/ersonp/lore-core/internal/infrastructure/embedder/openai"
+	"github.com/ersonp/lore-core/internal/infrastructure/relationaldb/sqlite"
 	"github.com/ersonp/lore-core/internal/infrastructure/vectordb/qdrant"
 )
 
@@ -136,6 +138,11 @@ func runWorldsCreate(cmd *cobra.Command, name string, description string) error 
 		return fmt.Errorf("creating qdrant collection: %w", err)
 	}
 
+	// Create SQLite database for the world
+	if err := initWorldSQLite(ctx, cwd, name); err != nil {
+		return fmt.Errorf("initializing sqlite database: %w", err)
+	}
+
 	fmt.Printf("Created world %q with collection %q\n", name, collection)
 
 	return nil
@@ -194,6 +201,9 @@ func runWorldsDelete(cmd *cobra.Command, name string, force bool) error {
 		fmt.Printf("Warning: could not delete collection %q: %v\n", world.Collection, err)
 	}
 
+	// Delete SQLite database files
+	cleanupWorldSQLite(cwd, name)
+
 	worlds.Remove(name)
 
 	if err := worlds.Save(cwd); err != nil {
@@ -242,4 +252,45 @@ func (m *worldManager) deleteCollection(ctx context.Context, collection string) 
 	defer repo.Close()
 
 	return repo.DeleteCollection(ctx)
+}
+
+// initWorldSQLite creates the SQLite database and schema for a world.
+func initWorldSQLite(ctx context.Context, basePath, worldName string) error {
+	sqlitePath := config.SQLitePathForWorld(basePath, worldName)
+
+	// Ensure directory exists
+	if err := os.MkdirAll(filepath.Dir(sqlitePath), 0755); err != nil {
+		return fmt.Errorf("creating world directory: %w", err)
+	}
+
+	// Initialize SQLite and create schema
+	repo, err := sqlite.NewRepository(config.SQLiteConfig{Path: sqlitePath})
+	if err != nil {
+		return fmt.Errorf("creating sqlite database: %w", err)
+	}
+	defer repo.Close()
+
+	if err := repo.EnsureSchema(ctx); err != nil {
+		return fmt.Errorf("creating sqlite schema: %w", err)
+	}
+
+	return nil
+}
+
+// cleanupWorldSQLite removes SQLite database files for a world.
+func cleanupWorldSQLite(basePath, worldName string) {
+	sqlitePath := config.SQLitePathForWorld(basePath, worldName)
+
+	// Delete main database file
+	if err := os.Remove(sqlitePath); err != nil && !os.IsNotExist(err) {
+		fmt.Printf("Warning: could not delete sqlite database: %v\n", err)
+	}
+
+	// Delete WAL and SHM files (SQLite journal files)
+	os.Remove(sqlitePath + "-wal")
+	os.Remove(sqlitePath + "-shm")
+
+	// Remove world directory if empty
+	worldDir := filepath.Dir(sqlitePath)
+	os.Remove(worldDir) // Fails silently if not empty
 }
