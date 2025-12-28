@@ -21,6 +21,15 @@ linters:
     - funlen
     - nestif
     - gocyclo
+    # Performance
+    - prealloc
+    - gocritic
+    - bodyclose
+    - noctx
+    - makezero
+    - perfsprint
+    - wastedassign
+    - durationcheck
 
 linters-settings:
   # Block forbidden modules from being added to go.mod
@@ -69,3 +78,27 @@ linters-settings:
   # Cyclomatic complexity limit
   gocyclo:
     min-complexity: 15
+
+  # Slice preallocation
+  prealloc:
+    simple: true
+    range-loops: true
+    for-loops: false
+
+  # Performance and code quality hints
+  gocritic:
+    enabled-checks:
+      # Performance
+      - rangeValCopy
+      - hugeParam
+      - indexAlloc
+      # Correctness
+      - sloppyReassign
+      - exitAfterDefer
+      # Style that affects performance
+      - stringXbytes
+    settings:
+      hugeParam:
+        sizeThreshold: 128
+      rangeValCopy:
+        sizeThreshold: 128
