@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -95,7 +96,7 @@ func (e *exporter) fetchFacts(ctx context.Context, factType, sourceFile string, 
 	}
 
 	if len(facts) == 0 {
-		return nil, fmt.Errorf("no facts found to export")
+		return nil, errors.New("no facts found to export")
 	}
 
 	return facts, nil
@@ -157,16 +158,16 @@ func formatJSON(w io.Writer, facts []entities.Fact) error {
 	}
 
 	exportFacts := make([]exportFact, 0, len(facts))
-	for _, f := range facts {
+	for i := range facts {
 		exportFacts = append(exportFacts, exportFact{
-			ID:         f.ID,
-			Type:       string(f.Type),
-			Subject:    f.Subject,
-			Predicate:  f.Predicate,
-			Object:     f.Object,
-			Context:    f.Context,
-			SourceFile: f.SourceFile,
-			Confidence: f.Confidence,
+			ID:         facts[i].ID,
+			Type:       string(facts[i].Type),
+			Subject:    facts[i].Subject,
+			Predicate:  facts[i].Predicate,
+			Object:     facts[i].Object,
+			Context:    facts[i].Context,
+			SourceFile: facts[i].SourceFile,
+			Confidence: facts[i].Confidence,
 		})
 	}
 
@@ -183,16 +184,16 @@ func formatCSV(w io.Writer, facts []entities.Fact) error {
 		return err
 	}
 
-	for _, f := range facts {
+	for i := range facts {
 		row := []string{
-			f.ID,
-			string(f.Type),
-			f.Subject,
-			f.Predicate,
-			f.Object,
-			f.Context,
-			f.SourceFile,
-			fmt.Sprintf("%.2f", f.Confidence),
+			facts[i].ID,
+			string(facts[i].Type),
+			facts[i].Subject,
+			facts[i].Predicate,
+			facts[i].Object,
+			facts[i].Context,
+			facts[i].SourceFile,
+			fmt.Sprintf("%.2f", facts[i].Confidence),
 		}
 		if err := writer.Write(row); err != nil {
 			return err
@@ -215,16 +216,16 @@ func formatMarkdown(w io.Writer, facts []entities.Fact) error {
 		return err
 	}
 
-	for _, f := range facts {
-		source := f.SourceFile
+	for i := range facts {
+		source := facts[i].SourceFile
 		if len(source) > 30 {
 			source = "..." + source[len(source)-27:]
 		}
 		if _, err := fmt.Fprintf(w, "| %s | %s | %s | %s | %s |\n",
-			f.Type,
-			escapeMarkdown(f.Subject),
-			escapeMarkdown(f.Predicate),
-			escapeMarkdown(f.Object),
+			facts[i].Type,
+			escapeMarkdown(facts[i].Subject),
+			escapeMarkdown(facts[i].Predicate),
+			escapeMarkdown(facts[i].Object),
 			escapeMarkdown(source),
 		); err != nil {
 			return err

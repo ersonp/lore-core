@@ -4,7 +4,9 @@ package openai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/sashabaranov/go-openai"
@@ -58,7 +60,7 @@ type Client struct {
 // NewClient creates a new OpenAI LLM client.
 func NewClient(cfg config.LLMConfig) (*Client, error) {
 	if cfg.APIKey == "" {
-		return nil, fmt.Errorf("OpenAI API key is required")
+		return nil, errors.New("OpenAI API key is required")
 	}
 
 	client := openai.NewClient(cfg.APIKey)
@@ -95,7 +97,7 @@ func (c *Client) ExtractFacts(ctx context.Context, text string) ([]entities.Fact
 	}
 
 	if len(resp.Choices) == 0 {
-		return nil, fmt.Errorf("no response from OpenAI")
+		return nil, errors.New("no response from OpenAI")
 	}
 
 	content := resp.Choices[0].Message.Content
@@ -155,7 +157,7 @@ func (c *Client) CheckConsistency(ctx context.Context, newFacts []entities.Fact,
 	}
 
 	if len(resp.Choices) == 0 {
-		return nil, fmt.Errorf("no response from OpenAI")
+		return nil, errors.New("no response from OpenAI")
 	}
 
 	content := resp.Choices[0].Message.Content
@@ -201,13 +203,13 @@ func objectToString(obj interface{}) string {
 		return v
 	case float64:
 		if v == float64(int(v)) {
-			return fmt.Sprintf("%d", int(v))
+			return strconv.Itoa(int(v))
 		}
-		return fmt.Sprintf("%g", v)
+		return strconv.FormatFloat(v, 'g', -1, 64)
 	case int:
-		return fmt.Sprintf("%d", v)
+		return strconv.Itoa(v)
 	case bool:
-		return fmt.Sprintf("%t", v)
+		return strconv.FormatBool(v)
 	default:
 		return fmt.Sprintf("%v", v)
 	}
@@ -224,14 +226,14 @@ type rawConsistencyIssue struct {
 // factsToRaw converts entities to raw format for JSON.
 func factsToRaw(facts []entities.Fact) []rawFact {
 	raw := make([]rawFact, 0, len(facts))
-	for _, f := range facts {
+	for i := range facts {
 		raw = append(raw, rawFact{
-			Type:       string(f.Type),
-			Subject:    f.Subject,
-			Predicate:  f.Predicate,
-			Object:     f.Object,
-			Context:    f.Context,
-			Confidence: f.Confidence,
+			Type:       string(facts[i].Type),
+			Subject:    facts[i].Subject,
+			Predicate:  facts[i].Predicate,
+			Object:     facts[i].Object,
+			Context:    facts[i].Context,
+			Confidence: facts[i].Confidence,
 		})
 	}
 	return raw

@@ -188,18 +188,18 @@ func (s *watchState) processInput(ctx context.Context, text string) error {
 	}
 
 	fmt.Printf("Found %d facts:\n", len(result.Facts))
-	for i, fact := range result.Facts {
-		fmt.Printf("  %d. [%s] %s %s %s\n", i+1, fact.Type, fact.Subject, fact.Predicate, fact.Object)
+	for i := range result.Facts {
+		fmt.Printf("  %d. [%s] %s %s %s\n", i+1, result.Facts[i].Type, result.Facts[i].Subject, result.Facts[i].Predicate, result.Facts[i].Object)
 	}
 
 	// Display consistency issues
 	if len(result.Issues) > 0 {
 		fmt.Println()
-		for _, issue := range result.Issues {
-			severityLabel := formatSeverity(issue.Severity)
-			fmt.Printf("%s: %s\n", severityLabel, issue.Description)
-			fmt.Printf("  New:      %s %s %s\n", issue.NewFact.Subject, issue.NewFact.Predicate, issue.NewFact.Object)
-			fmt.Printf("  Existing: %s %s %s (%s)\n", issue.ExistingFact.Subject, issue.ExistingFact.Predicate, issue.ExistingFact.Object, issue.ExistingFact.SourceFile)
+		for i := range result.Issues {
+			severityLabel := formatSeverity(result.Issues[i].Severity)
+			fmt.Printf("%s: %s\n", severityLabel, result.Issues[i].Description)
+			fmt.Printf("  New:      %s %s %s\n", result.Issues[i].NewFact.Subject, result.Issues[i].NewFact.Predicate, result.Issues[i].NewFact.Object)
+			fmt.Printf("  Existing: %s %s %s (%s)\n", result.Issues[i].ExistingFact.Subject, result.Issues[i].ExistingFact.Predicate, result.Issues[i].ExistingFact.Object, result.Issues[i].ExistingFact.SourceFile)
 		}
 	}
 
@@ -252,21 +252,21 @@ func (s *watchState) showPendingFacts() {
 	}
 
 	fmt.Printf("Pending facts (%d):\n", len(s.pendingFacts))
-	for i, fact := range s.pendingFacts {
-		fmt.Printf("  %d. [%s] %s %s %s\n", i+1, fact.Type, fact.Subject, fact.Predicate, fact.Object)
+	for i := range s.pendingFacts {
+		fmt.Printf("  %d. [%s] %s %s %s\n", i+1, s.pendingFacts[i].Type, s.pendingFacts[i].Subject, s.pendingFacts[i].Predicate, s.pendingFacts[i].Object)
 	}
 
 	if len(s.pendingIssues) > 0 {
 		fmt.Printf("\nPending issues (%d):\n", len(s.pendingIssues))
-		for _, issue := range s.pendingIssues {
-			fmt.Printf("  - %s: %s\n", formatSeverity(issue.Severity), issue.Description)
+		for i := range s.pendingIssues {
+			fmt.Printf("  - %s: %s\n", formatSeverity(s.pendingIssues[i].Severity), s.pendingIssues[i].Description)
 		}
 	}
 }
 
 func hasCriticalIssues(issues []ports.ConsistencyIssue) bool {
-	for _, issue := range issues {
-		if issue.Severity == "critical" {
+	for i := range issues {
+		if issues[i].Severity == "critical" {
 			return true
 		}
 	}

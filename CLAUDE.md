@@ -613,6 +613,132 @@ func NewHandler(db VectorDB) *Handler {
 
 **Exceptions:** Optional callbacks (`func(...)`) are fine to pass as nil.
 
+### No string concatenation in loops
+Use strings.Builder for O(n) instead of O(n²):
+
+```go
+// Bad - O(n²) allocations
+var result string
+for _, item := range items {
+    result += item.Name
+}
+
+// Good - O(n) with Builder
+var sb strings.Builder
+for _, item := range items {
+    sb.WriteString(item.Name)
+}
+result := sb.String()
+```
+
+### No regex compilation in loops
+Compile once, use many times:
+
+```go
+// Bad - compiles every iteration
+for _, text := range texts {
+    re := regexp.MustCompile(`\d+`)
+    matches := re.FindAllString(text, -1)
+}
+
+// Good - compile once
+re := regexp.MustCompile(`\d+`)
+for _, text := range texts {
+    matches := re.FindAllString(text, -1)
+}
+
+// Best - package-level
+var digitRegex = regexp.MustCompile(`\d+`)
+```
+
+### No defer in loops
+Defers execute at function exit, not loop end:
+
+```go
+// Bad - all files stay open until function returns
+for _, file := range files {
+    f, _ := os.Open(file)
+    defer f.Close()
+}
+
+// Good - explicit close
+for _, file := range files {
+    f, _ := os.Open(file)
+    processFile(f)
+    f.Close()
+}
+
+// Good - closure for per-iteration defer
+for _, file := range files {
+    func() {
+        f, _ := os.Open(file)
+        defer f.Close()
+        processFile(f)
+    }()
+}
+```
+
+### No repeated map lookups
+Store map lookup results in variables:
+
+```go
+// Bad - two lookups for same key
+if cache[key] != nil {
+    process(cache[key])
+}
+
+// Good - single lookup
+if v := cache[key]; v != nil {
+    process(v)
+}
+```
+
+### No nested loops over same collection
+Use map for O(n) instead of O(n²):
+
+```go
+// Bad - O(n²)
+for _, a := range items {
+    for _, b := range items {
+        compare(a, b)
+    }
+}
+
+// Good - O(n) with map
+itemMap := make(map[string]*Item, len(items))
+for i := range items {
+    itemMap[items[i].ID] = &items[i]
+}
+```
+
+### Preallocate slices when size is known
+Use make() with capacity for known sizes:
+
+```go
+// Bad - grows dynamically, multiple allocations
+var result []Fact
+for _, r := range raw {
+    result = append(result, convert(r))
+}
+
+// Good - single allocation
+result := make([]Fact, 0, len(raw))
+for _, r := range raw {
+    result = append(result, convert(r))
+}
+```
+
+### Use pointer receivers for large structs
+Avoid copying large structs on every method call:
+
+```go
+// Bad - copies ~200 byte struct
+func (f Fact) Process() error { ... }
+
+// Good - passes 8-byte pointer
+func (f *Fact) Process() error { ... }
+```
+
 ---
 
 ## Makefile Commands

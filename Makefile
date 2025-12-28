@@ -1,12 +1,23 @@
-.PHONY: format lint test test-integration vet build clean check
+.PHONY: format lint lint-custom lint-all test test-integration vet build clean check vendor mocks tools build-linter test-linter
 
-# Format all Go files with goimports (excluding vendor)
+# Format all Go files with goimports (excluding vendor and tools)
 format:
-	find . -name '*.go' -not -path './vendor/*' | xargs goimports -w
+	find . -name '*.go' -not -path './vendor/*' -not -path './tools/*/vendor/*' | xargs goimports -w
 
 # Run golangci-lint
 lint:
 	golangci-lint run
+
+# Run custom lore-lint
+lint-custom:
+	@if [ ! -f tools/lore-lint/bin/lore-lint ]; then \
+		echo "Building lore-lint..."; \
+		$(MAKE) -C tools/lore-lint build; \
+	fi
+	tools/lore-lint/bin/lore-lint ./...
+
+# Run all linters
+lint-all: lint lint-custom
 
 # Run all tests
 test:
@@ -27,10 +38,11 @@ build:
 # Clean build artifacts
 clean:
 	rm -rf bin/
+	$(MAKE) -C tools/lore-lint clean
 	go clean
 
-# Run all checks (format, vet, lint, test)
-check: format vet lint test
+# Run all checks (format, vet, lint-all, test)
+check: format vet lint-all test
 
 # Vendor dependencies
 vendor:
@@ -46,3 +58,12 @@ tools:
 	go install golang.org/x/tools/cmd/goimports@latest
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 	go install github.com/vektra/mockery/v2@latest
+	$(MAKE) -C tools/lore-lint build
+
+# Build custom linter
+build-linter:
+	$(MAKE) -C tools/lore-lint build
+
+# Test custom linter
+test-linter:
+	$(MAKE) -C tools/lore-lint test

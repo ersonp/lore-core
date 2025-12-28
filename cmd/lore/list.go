@@ -73,12 +73,12 @@ func displayFacts(facts []entities.Fact, totalCount uint64) {
 		fmt.Printf("Showing %d facts:\n\n", len(facts))
 	}
 
-	for _, fact := range facts {
-		displayFact(fact)
+	for i := range facts {
+		displayFact(&facts[i])
 	}
 }
 
-func displayFact(fact entities.Fact) {
+func displayFact(fact *entities.Fact) {
 	fmt.Printf("ID: %s\n", fact.ID)
 	fmt.Printf("  [%s] %s %s %s\n", fact.Type, fact.Subject, fact.Predicate, fact.Object)
 	if fact.Context != "" {

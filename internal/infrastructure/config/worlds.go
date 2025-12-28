@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -86,7 +87,7 @@ func (w *WorldsConfig) Remove(name string) {
 // Get returns the configuration for a specific world.
 func (w *WorldsConfig) Get(name string) (*WorldEntry, error) {
 	if len(w.Worlds) == 0 {
-		return nil, fmt.Errorf("no worlds configured")
+		return nil, errors.New("no worlds configured")
 	}
 
 	entry, ok := w.Worlds[name]

@@ -177,7 +177,7 @@ func TestSearch(t *testing.T) {
 		Object:    "lord of Rivendell",
 		Embedding: embedding,
 	}
-	err := testRepo.Save(ctx, fact)
+	err := testRepo.Save(ctx, &fact)
 	require.NoError(t, err)
 
 	// Search with similar embedding

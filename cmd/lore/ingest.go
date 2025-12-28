@@ -65,8 +65,8 @@ func runIngestFile(ctx context.Context, handler *handlers.IngestHandler, filePat
 
 	fmt.Printf("Found %d facts\n", result.FactsCount)
 
-	for i, fact := range result.Facts {
-		fmt.Printf("  %d. [%s] %s %s %s\n", i+1, fact.Type, fact.Subject, fact.Predicate, fact.Object)
+	for i := range result.Facts {
+		fmt.Printf("  %d. [%s] %s %s %s\n", i+1, result.Facts[i].Type, result.Facts[i].Subject, result.Facts[i].Predicate, result.Facts[i].Object)
 	}
 
 	// Display consistency issues if any
@@ -129,13 +129,13 @@ func runIngestDirectory(ctx context.Context, handler *handlers.IngestHandler, di
 func displayConsistencyIssues(issues []ports.ConsistencyIssue) {
 	fmt.Printf("Consistency Issues Found: %d\n\n", len(issues))
 
-	for _, issue := range issues {
-		severityLabel := formatSeverity(issue.Severity)
-		fmt.Printf("%s: %s\n", severityLabel, issue.Description)
+	for i := range issues {
+		severityLabel := formatSeverity(issues[i].Severity)
+		fmt.Printf("%s: %s\n", severityLabel, issues[i].Description)
 		fmt.Printf("  New:      %s %s %s (%s)\n",
-			issue.NewFact.Subject, issue.NewFact.Predicate, issue.NewFact.Object, issue.NewFact.SourceFile)
+			issues[i].NewFact.Subject, issues[i].NewFact.Predicate, issues[i].NewFact.Object, issues[i].NewFact.SourceFile)
 		fmt.Printf("  Existing: %s %s %s (%s)\n\n",
-			issue.ExistingFact.Subject, issue.ExistingFact.Predicate, issue.ExistingFact.Object, issue.ExistingFact.SourceFile)
+			issues[i].ExistingFact.Subject, issues[i].ExistingFact.Predicate, issues[i].ExistingFact.Object, issues[i].ExistingFact.SourceFile)
 	}
 }
 

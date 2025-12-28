@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -58,7 +59,7 @@ func withInternalDeps(fn func(*internalDeps) error) error {
 	}
 
 	if globalWorld == "" {
-		return fmt.Errorf("world is required (use --world flag)")
+		return errors.New("world is required (use --world flag)")
 	}
 
 	collection, err := worlds.GetCollection(globalWorld)

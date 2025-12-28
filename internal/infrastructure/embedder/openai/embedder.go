@@ -3,6 +3,7 @@ package openai
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/sashabaranov/go-openai"
@@ -22,7 +23,7 @@ type Embedder struct {
 // NewEmbedder creates a new OpenAI embedder.
 func NewEmbedder(cfg config.EmbedderConfig) (*Embedder, error) {
 	if cfg.APIKey == "" {
-		return nil, fmt.Errorf("OpenAI API key is required")
+		return nil, errors.New("OpenAI API key is required")
 	}
 
 	client := openai.NewClient(cfg.APIKey)
@@ -46,7 +47,7 @@ func (e *Embedder) Embed(ctx context.Context, text string) ([]float32, error) {
 	}
 
 	if len(embeddings) == 0 {
-		return nil, fmt.Errorf("no embeddings returned")
+		return nil, errors.New("no embeddings returned")
 	}
 
 	return embeddings[0], nil
