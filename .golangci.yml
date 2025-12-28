@@ -101,6 +101,6 @@ linters-settings:
       - exitAfterDefer
     settings:
       hugeParam:
-        sizeThreshold: 256
+        sizeThreshold: 128
       rangeValCopy:
         sizeThreshold: 128

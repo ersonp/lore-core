@@ -75,8 +75,8 @@ func (r *Repository) EnsureCollection(ctx context.Context, vectorSize uint64) er
 }
 
 // Save stores a fact with its embedding.
-func (r *Repository) Save(ctx context.Context, fact entities.Fact) error {
-	return r.SaveBatch(ctx, []entities.Fact{fact})
+func (r *Repository) Save(ctx context.Context, fact *entities.Fact) error {
+	return r.SaveBatch(ctx, []entities.Fact{*fact})
 }
 
 // SaveBatch stores multiple facts.

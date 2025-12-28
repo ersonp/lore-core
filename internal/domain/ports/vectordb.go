@@ -18,7 +18,7 @@ type VectorDB interface {
 	DeleteCollection(ctx context.Context) error
 
 	// Save stores a fact with its embedding.
-	Save(ctx context.Context, fact entities.Fact) error
+	Save(ctx context.Context, fact *entities.Fact) error
 
 	// SaveBatch stores multiple facts.
 	SaveBatch(ctx context.Context, facts []entities.Fact) error

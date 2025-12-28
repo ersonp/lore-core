@@ -41,7 +41,7 @@ func TestSaveAndFindByID(t *testing.T) {
 	}
 
 	// Save
-	err := testRepo.Save(ctx, fact)
+	err := testRepo.Save(ctx, &fact)
 	require.NoError(t, err)
 
 	// Retrieve by ID
@@ -75,7 +75,7 @@ func TestSaveAndCount(t *testing.T) {
 		Object:    "a dark land",
 		Embedding: make([]float32, embedder.VectorSize),
 	}
-	err = testRepo.Save(ctx, fact)
+	err = testRepo.Save(ctx, &fact)
 	require.NoError(t, err)
 
 	// Count should be 1
@@ -98,7 +98,7 @@ func TestSaveAndDelete(t *testing.T) {
 	}
 
 	// Save
-	err := testRepo.Save(ctx, fact)
+	err := testRepo.Save(ctx, &fact)
 	require.NoError(t, err)
 
 	// Verify exists
@@ -251,7 +251,7 @@ func TestEnsureCollection_ExistingWithDifferentVectorSize(t *testing.T) {
 		Object:    "working",
 		Embedding: make([]float32, embedder.VectorSize),
 	}
-	err = testRepo.Save(ctx, fact)
+	err = testRepo.Save(ctx, &fact)
 	require.NoError(t, err, "Save should work with original vector size")
 
 	// Cleanup
@@ -267,6 +267,6 @@ func TestEnsureCollection_ExistingWithDifferentVectorSize(t *testing.T) {
 		Object:    "size",
 		Embedding: make([]float32, differentSize),
 	}
-	err = testRepo.Save(ctx, wrongFact)
+	err = testRepo.Save(ctx, &wrongFact)
 	require.Error(t, err, "Save should fail with mismatched vector size")
 }

@@ -38,7 +38,7 @@ func (m *VectorDB) DeleteCollection(ctx context.Context) error {
 }
 
 // Save stores a single fact.
-func (m *VectorDB) Save(ctx context.Context, fact entities.Fact) error {
+func (m *VectorDB) Save(ctx context.Context, fact *entities.Fact) error {
 	return m.Err
 }
 
