@@ -2,6 +2,7 @@ package mocks
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ersonp/lore-core/internal/domain/entities"
 )
@@ -14,12 +15,14 @@ type VectorDB struct {
 	// Collection errors (separate from Err for fine-grained control)
 	EnsureCollectionErr error
 	DeleteCollectionErr error
+	FindByIDErr         error // Error to return when fact is not found
 
 	// Call tracking
 	SaveBatchCallCount        int
 	SaveBatchLastFacts        []entities.Fact
 	EnsureCollectionCallCount int
 	DeleteCollectionCallCount int
+	FindByIDCallCount         int
 }
 
 // EnsureCollection creates the collection if it doesn't exist.
@@ -48,6 +51,7 @@ func (m *VectorDB) SaveBatch(ctx context.Context, facts []entities.Fact) error {
 
 // FindByID retrieves a fact by ID.
 func (m *VectorDB) FindByID(ctx context.Context, id string) (entities.Fact, error) {
+	m.FindByIDCallCount++
 	if m.Err != nil {
 		return entities.Fact{}, m.Err
 	}
@@ -56,7 +60,45 @@ func (m *VectorDB) FindByID(ctx context.Context, id string) (entities.Fact, erro
 			return f, nil
 		}
 	}
-	return entities.Fact{}, nil
+	// Return FindByIDErr when fact not found (mimics real behavior)
+	if m.FindByIDErr != nil {
+		return entities.Fact{}, m.FindByIDErr
+	}
+	return entities.Fact{}, fmt.Errorf("fact not found: %s", id)
+}
+
+// ExistsByIDs checks which IDs exist in the mock database.
+func (m *VectorDB) ExistsByIDs(ctx context.Context, ids []string) (map[string]bool, error) {
+	if m.Err != nil {
+		return nil, m.Err
+	}
+	exists := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		for _, f := range m.Facts {
+			if f.ID == id {
+				exists[id] = true
+				break
+			}
+		}
+	}
+	return exists, nil
+}
+
+// FindByIDs retrieves multiple facts by their IDs.
+func (m *VectorDB) FindByIDs(ctx context.Context, ids []string) ([]entities.Fact, error) {
+	if m.Err != nil {
+		return nil, m.Err
+	}
+	var facts []entities.Fact
+	for _, id := range ids {
+		for _, f := range m.Facts {
+			if f.ID == id {
+				facts = append(facts, f)
+				break
+			}
+		}
+	}
+	return facts, nil
 }
 
 // Search finds facts by embedding similarity.

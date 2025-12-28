@@ -41,6 +41,7 @@ func run(ctx context.Context) error {
 		newListCmd(),
 		newDeleteCmd(),
 		newExportCmd(),
+		newImportCmd(),
 		newWatchCmd(),
 		newWorldsCmd(),
 	)

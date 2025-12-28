@@ -120,6 +120,7 @@ Lore-Core is the foundation for a suite of tools:
 | `lore-viz` | Consistent image generation | Planned |
 | `lore-timeline` | Visual timeline generation | Planned |
 | `lore-graph` | Relationship visualization | Planned |
+| `lore-wall` | Detective-style crazy wall UI | Planned |
 
 ## Development
 
