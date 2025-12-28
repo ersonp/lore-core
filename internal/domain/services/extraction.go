@@ -65,6 +65,7 @@ func (s *ExtractionService) ExtractAndStoreWithOptions(ctx context.Context, text
 
 	var allFacts []entities.Fact
 	for i, chunk := range chunks {
+		//nolint:loopcall // Intentional: LLMs have token limits, text must be chunked
 		facts, err := s.llm.ExtractFacts(ctx, chunk)
 		if err != nil {
 			return nil, fmt.Errorf("extracting facts from chunk %d: %w", i, err)

@@ -3,6 +3,8 @@ package loopcall
 
 import (
 	"go/ast"
+	"go/token"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
@@ -64,6 +66,9 @@ func run(pass *analysis.Pass) (interface{}, error) {
 
 			methodName := sel.Sel.Name
 			if externalMethods[methodName] {
+				if hasNolintDirective(pass, call.Pos()) {
+					return true
+				}
 				pass.Reportf(call.Pos(),
 					"potential N+1: %s called inside loop - consider batching",
 					methodName)
@@ -74,4 +79,30 @@ func run(pass *analysis.Pass) (interface{}, error) {
 	})
 
 	return nil, nil
+}
+
+// hasNolintDirective checks if there's a nolint:loopcall comment for the given position.
+func hasNolintDirective(pass *analysis.Pass, pos token.Pos) bool {
+	file := pass.Fset.File(pos)
+	if file == nil {
+		return false
+	}
+
+	line := file.Line(pos)
+
+	for _, f := range pass.Files {
+		for _, cg := range f.Comments {
+			for _, c := range cg.List {
+				commentLine := file.Line(c.Pos())
+				// Check comment on same line or line before
+				if commentLine == line || commentLine == line-1 {
+					if strings.Contains(c.Text, "nolint:loopcall") {
+						return true
+					}
+				}
+			}
+		}
+	}
+
+	return false
 }
