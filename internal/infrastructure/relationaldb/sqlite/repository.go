@@ -439,18 +439,83 @@ func (r *Repository) DeleteEntityType(ctx context.Context, name string) error {
 
 // LogAction logs an action to the audit log.
 func (r *Repository) LogAction(ctx context.Context, action string, factID string, details map[string]any) error {
-	// TODO: Implement in Task 09
+	var detailsJSON sql.NullString
+	if details != nil {
+		data, err := json.Marshal(details)
+		if err != nil {
+			return fmt.Errorf("marshaling details: %w", err)
+		}
+		detailsJSON = sql.NullString{String: string(data), Valid: true}
+	}
+
+	var factIDPtr sql.NullString
+	if factID != "" {
+		factIDPtr = sql.NullString{String: factID, Valid: true}
+	}
+
+	query := `INSERT INTO audit_log (action, fact_id, details) VALUES (?, ?, ?)`
+	_, err := r.db.ExecContext(ctx, query, action, factIDPtr, detailsJSON)
+	if err != nil {
+		return fmt.Errorf("logging action: %w", err)
+	}
 	return nil
 }
 
 // FindAuditLog finds audit log entries for a specific fact.
 func (r *Repository) FindAuditLog(ctx context.Context, factID string) ([]entities.AuditEntry, error) {
-	// TODO: Implement in Task 09
-	return nil, nil
+	query := `
+		SELECT id, action, fact_id, details, created_at
+		FROM audit_log
+		WHERE fact_id = ?
+		ORDER BY created_at DESC
+	`
+	return r.queryAuditLog(ctx, query, factID)
 }
 
 // FindAuditLogByAction finds audit log entries by action type.
 func (r *Repository) FindAuditLogByAction(ctx context.Context, action string, limit int) ([]entities.AuditEntry, error) {
-	// TODO: Implement in Task 09
-	return nil, nil
+	query := `
+		SELECT id, action, fact_id, details, created_at
+		FROM audit_log
+		WHERE action = ?
+		ORDER BY created_at DESC
+		LIMIT ?
+	`
+	return r.queryAuditLog(ctx, query, action, limit)
+}
+
+// queryAuditLog is a helper to execute audit log queries.
+func (r *Repository) queryAuditLog(ctx context.Context, query string, args ...any) ([]entities.AuditEntry, error) {
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying audit log: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []entities.AuditEntry
+	for rows.Next() {
+		var entry entities.AuditEntry
+		var factID, details sql.NullString
+
+		if err := rows.Scan(
+			&entry.ID,
+			&entry.Action,
+			&factID,
+			&details,
+			&entry.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scanning audit entry: %w", err)
+		}
+
+		entry.FactID = factID.String
+
+		if details.Valid && details.String != "" {
+			if err := json.Unmarshal([]byte(details.String), &entry.Details); err != nil {
+				return nil, fmt.Errorf("unmarshaling details: %w", err)
+			}
+		}
+
+		entries = append(entries, entry)
+	}
+	return entries, rows.Err()
 }
