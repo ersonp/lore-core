@@ -492,7 +492,14 @@ func (r *Repository) queryAuditLog(ctx context.Context, query string, args ...an
 	}
 	defer rows.Close()
 
-	entries := make([]entities.AuditEntry, 0, 16)
+	// Use limit parameter as capacity hint if available
+	var entries []entities.AuditEntry
+	if len(args) > 0 {
+		if limit, ok := args[len(args)-1].(int); ok && limit > 0 {
+			entries = make([]entities.AuditEntry, 0, limit)
+		}
+	}
+
 	for rows.Next() {
 		var entry entities.AuditEntry
 		var factID, details sql.NullString
