@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"github.com/ersonp/lore-core/internal/infrastructure/config"
 	embedder "github.com/ersonp/lore-core/internal/infrastructure/embedder/openai"
 	llm "github.com/ersonp/lore-core/internal/infrastructure/llm/openai"
+	"github.com/ersonp/lore-core/internal/infrastructure/relationaldb/sqlite"
 	"github.com/ersonp/lore-core/internal/infrastructure/vectordb/qdrant"
 )
 
@@ -28,6 +30,7 @@ type Deps struct {
 type internalDeps struct {
 	Deps
 	repo              *qdrant.Repository
+	relationalDB      *sqlite.Repository
 	embedder          *embedder.Embedder
 	extractionService *services.ExtractionService
 }
@@ -76,6 +79,19 @@ func withInternalDeps(fn func(*internalDeps) error) error {
 	}
 	defer repo.Close()
 
+	// Initialize RelationalDB (SQLite)
+	sqlitePath := config.SQLitePathForWorld(cwd, globalWorld)
+	relationalDB, err := sqlite.NewRepository(config.SQLiteConfig{Path: sqlitePath})
+	if err != nil {
+		return fmt.Errorf("creating sqlite repository: %w", err)
+	}
+	defer relationalDB.Close()
+
+	// Ensure schema exists
+	if err := relationalDB.EnsureSchema(context.Background()); err != nil {
+		return fmt.Errorf("ensuring sqlite schema: %w", err)
+	}
+
 	emb, err := embedder.NewEmbedder(cfg.Embedder)
 	if err != nil {
 		return fmt.Errorf("creating embedder: %w", err)
@@ -97,6 +113,7 @@ func withInternalDeps(fn func(*internalDeps) error) error {
 			QueryHandler:  handlers.NewQueryHandler(queryService),
 		},
 		repo:              repo,
+		relationalDB:      relationalDB,
 		embedder:          emb,
 		extractionService: extractionService,
 	}
@@ -115,5 +132,14 @@ func withRepo(fn func(ports.VectorDB) error) error {
 func withExtractionService(fn func(*services.ExtractionService, ports.VectorDB) error) error {
 	return withInternalDeps(func(d *internalDeps) error {
 		return fn(d.extractionService, d.repo)
+	})
+}
+
+// withRelationalDB provides direct relational database access.
+//
+//nolint:unused // Will be used by future commands (history, relationships)
+func withRelationalDB(fn func(ports.RelationalDB) error) error {
+	return withInternalDeps(func(d *internalDeps) error {
+		return fn(d.relationalDB)
 	})
 }
