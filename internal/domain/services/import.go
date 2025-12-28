@@ -238,7 +238,10 @@ func (s *ImportService) generateEmbeddings(ctx context.Context, facts []entities
 // saveWithConflictHandling saves facts with conflict handling.
 func (s *ImportService) saveWithConflictHandling(ctx context.Context, facts []entities.Fact, onConflict ConflictStrategy) (imported, skipped int, err error) {
 	if onConflict != ConflictSkip {
-		// Default: overwrite (upsert)
+		// Overwrite mode: preserve CreatedAt for existing facts
+		if err := s.preserveCreatedAt(ctx, facts); err != nil {
+			return 0, 0, err
+		}
 		if err := s.vectorDB.SaveBatch(ctx, facts); err != nil {
 			return 0, 0, err
 		}
@@ -258,6 +261,49 @@ func (s *ImportService) saveWithConflictHandling(ctx context.Context, facts []en
 		return 0, 0, err
 	}
 	return len(toSave), skipped, nil
+}
+
+// preserveCreatedAt looks up existing facts and preserves their CreatedAt timestamps.
+func (s *ImportService) preserveCreatedAt(ctx context.Context, facts []entities.Fact) error {
+	if len(facts) == 0 {
+		return nil
+	}
+
+	// Collect IDs to look up
+	ids := make([]string, len(facts))
+	for i, fact := range facts {
+		ids[i] = fact.ID
+	}
+
+	// Get existing facts' timestamps
+	createdAtMap, err := s.getExistingCreatedAt(ctx, ids)
+	if err != nil {
+		return err
+	}
+
+	// Preserve CreatedAt for existing facts
+	for i := range facts {
+		if createdAt, exists := createdAtMap[facts[i].ID]; exists {
+			facts[i].CreatedAt = createdAt
+		}
+	}
+
+	return nil
+}
+
+// getExistingCreatedAt retrieves CreatedAt timestamps for existing fact IDs.
+func (s *ImportService) getExistingCreatedAt(ctx context.Context, ids []string) (map[string]time.Time, error) {
+	existingFacts, err := s.vectorDB.FindByIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("looking up existing facts: %w", err)
+	}
+
+	createdAtMap := make(map[string]time.Time, len(existingFacts))
+	for _, fact := range existingFacts {
+		createdAtMap[fact.ID] = fact.CreatedAt
+	}
+
+	return createdAtMap, nil
 }
 
 // filterExisting filters out facts that already exist in the database.

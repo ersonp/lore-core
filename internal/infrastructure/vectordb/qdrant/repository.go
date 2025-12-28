@@ -189,6 +189,34 @@ func (r *Repository) ExistsByIDs(ctx context.Context, ids []string) (map[string]
 	return exists, nil
 }
 
+// FindByIDs retrieves multiple facts by their IDs.
+func (r *Repository) FindByIDs(ctx context.Context, ids []string) ([]entities.Fact, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	pointIDs := make([]*pb.PointId, len(ids))
+	for i, id := range ids {
+		pointIDs[i] = &pb.PointId{PointIdOptions: &pb.PointId_Uuid{Uuid: id}}
+	}
+
+	resp, err := r.points.Get(ctx, &pb.GetPoints{
+		CollectionName: r.collection,
+		Ids:            pointIDs,
+		WithPayload: &pb.WithPayloadSelector{
+			SelectorOptions: &pb.WithPayloadSelector_Enable{Enable: true},
+		},
+		WithVectors: &pb.WithVectorsSelector{
+			SelectorOptions: &pb.WithVectorsSelector_Enable{Enable: false},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("getting points by IDs: %w", err)
+	}
+
+	return retrievedPointsToFacts(resp.Result)
+}
+
 // Search performs a semantic search and returns similar facts.
 func (r *Repository) Search(ctx context.Context, embedding []float32, limit int) ([]entities.Fact, error) {
 	resp, err := r.points.Search(ctx, &pb.SearchPoints{

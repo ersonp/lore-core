@@ -84,6 +84,23 @@ func (m *VectorDB) ExistsByIDs(ctx context.Context, ids []string) (map[string]bo
 	return exists, nil
 }
 
+// FindByIDs retrieves multiple facts by their IDs.
+func (m *VectorDB) FindByIDs(ctx context.Context, ids []string) ([]entities.Fact, error) {
+	if m.Err != nil {
+		return nil, m.Err
+	}
+	var facts []entities.Fact
+	for _, id := range ids {
+		for _, f := range m.Facts {
+			if f.ID == id {
+				facts = append(facts, f)
+				break
+			}
+		}
+	}
+	return facts, nil
+}
+
 // Search finds facts by embedding similarity.
 func (m *VectorDB) Search(ctx context.Context, embedding []float32, limit int) ([]entities.Fact, error) {
 	if m.Err != nil {

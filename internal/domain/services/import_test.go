@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -158,6 +159,41 @@ func TestImportService_Import_SkipExisting(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.Imported)
 	assert.Equal(t, 1, result.Skipped)
+}
+
+func TestImportService_Import_OverwritePreservesCreatedAt(t *testing.T) {
+	embedder := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
+	originalTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	vectorDB := &mocks.VectorDB{
+		Facts: []entities.Fact{
+			{ID: "existing-id", CreatedAt: originalTime},
+		},
+	}
+
+	service := NewImportService(embedder, vectorDB)
+	rawFacts := []parsers.RawFact{
+		{ID: "existing-id", Type: "character", Subject: "Gandalf", Predicate: "is", Object: "wizard"},
+		{ID: "new-id", Type: "character", Subject: "Frodo", Predicate: "is", Object: "hobbit"},
+	}
+
+	result, err := service.Import(context.Background(), rawFacts, ImportOptions{OnConflict: ConflictOverwrite})
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, result.Imported)
+
+	// Verify existing fact preserves original CreatedAt
+	require.Len(t, vectorDB.SaveBatchLastFacts, 2)
+	var existingFact, newFact entities.Fact
+	for _, f := range vectorDB.SaveBatchLastFacts {
+		if f.ID == "existing-id" {
+			existingFact = f
+		} else {
+			newFact = f
+		}
+	}
+
+	assert.Equal(t, originalTime, existingFact.CreatedAt, "existing fact should preserve original CreatedAt")
+	assert.True(t, newFact.CreatedAt.After(originalTime), "new fact should have recent CreatedAt")
 }
 
 func TestImportService_Import_EmptyInput(t *testing.T) {

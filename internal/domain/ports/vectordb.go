@@ -30,6 +30,10 @@ type VectorDB interface {
 	// Returns a map where keys are IDs and values indicate existence.
 	ExistsByIDs(ctx context.Context, ids []string) (map[string]bool, error)
 
+	// FindByIDs retrieves multiple facts by their IDs.
+	// Returns only the facts that exist; missing IDs are silently ignored.
+	FindByIDs(ctx context.Context, ids []string) ([]entities.Fact, error)
+
 	// Search performs a semantic search and returns similar facts.
 	Search(ctx context.Context, embedding []float32, limit int) ([]entities.Fact, error)
 
