@@ -65,7 +65,58 @@ func (r *Repository) Path() string {
 
 // EnsureSchema creates the database schema if it doesn't exist.
 func (r *Repository) EnsureSchema(ctx context.Context) error {
-	// TODO: Implement in Task 05
+	schema := `
+	-- Entity relationships (connects two facts)
+	CREATE TABLE IF NOT EXISTS relationships (
+		id TEXT PRIMARY KEY,
+		source_fact_id TEXT NOT NULL,
+		target_fact_id TEXT NOT NULL,
+		type TEXT NOT NULL,
+		bidirectional INTEGER NOT NULL DEFAULT 0,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE INDEX IF NOT EXISTS idx_relationships_source ON relationships(source_fact_id);
+	CREATE INDEX IF NOT EXISTS idx_relationships_target ON relationships(target_fact_id);
+	CREATE INDEX IF NOT EXISTS idx_relationships_type ON relationships(type);
+
+	-- Fact version history (tracks changes over time)
+	CREATE TABLE IF NOT EXISTS fact_versions (
+		id TEXT PRIMARY KEY,
+		fact_id TEXT NOT NULL,
+		version INTEGER NOT NULL,
+		change_type TEXT NOT NULL,
+		data TEXT NOT NULL,
+		reason TEXT,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(fact_id, version)
+	);
+	CREATE INDEX IF NOT EXISTS idx_fact_versions_fact ON fact_versions(fact_id);
+	CREATE INDEX IF NOT EXISTS idx_fact_versions_type ON fact_versions(change_type);
+
+	-- Custom entity types (user-defined extensions to FactType)
+	CREATE TABLE IF NOT EXISTS entity_types (
+		name TEXT PRIMARY KEY,
+		description TEXT,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
+
+	-- Audit log (tracks all actions)
+	CREATE TABLE IF NOT EXISTS audit_log (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		action TEXT NOT NULL,
+		fact_id TEXT,
+		details TEXT,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE INDEX IF NOT EXISTS idx_audit_log_fact ON audit_log(fact_id);
+	CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
+	CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at);
+	`
+
+	_, err := r.db.ExecContext(ctx, schema)
+	if err != nil {
+		return fmt.Errorf("creating schema: %w", err)
+	}
 	return nil
 }
 
