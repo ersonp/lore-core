@@ -110,9 +110,9 @@ func withInternalDeps(fn func(*internalDeps) error) error {
 		return fmt.Errorf("creating llm client: %w", err)
 	}
 
-	extractionService := services.NewExtractionService(llmClient, emb, repo)
-	queryService := services.NewQueryService(emb, repo)
 	entityTypeService := services.NewEntityTypeService(relationalDB)
+	extractionService := services.NewExtractionService(llmClient, emb, repo, entityTypeService)
+	queryService := services.NewQueryService(emb, repo)
 
 	deps := &internalDeps{
 		Deps: Deps{

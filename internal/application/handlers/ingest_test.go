@@ -13,12 +13,17 @@ import (
 	"github.com/ersonp/lore-core/internal/domain/services"
 )
 
+// newTestExtractionService creates an ExtractionService with mocks and default entity types.
+func newTestExtractionService(llm *mocks.LLMClient, emb *mocks.Embedder, db *mocks.VectorDB) *services.ExtractionService {
+	return services.NewExtractionService(llm, emb, db, newTestEntityTypeService())
+}
+
 func TestNewIngestHandler(t *testing.T) {
 	llm := &mocks.LLMClient{}
 	emb := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
 	db := &mocks.VectorDB{}
 
-	svc := services.NewExtractionService(llm, emb, db)
+	svc := newTestExtractionService(llm, emb, db)
 	handler := NewIngestHandler(svc)
 
 	require.NotNil(t, handler)
@@ -45,7 +50,7 @@ func TestIngestHandler_Handle(t *testing.T) {
 	emb := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
 	db := &mocks.VectorDB{}
 
-	svc := services.NewExtractionService(llm, emb, db)
+	svc := newTestExtractionService(llm, emb, db)
 	handler := NewIngestHandler(svc)
 
 	result, err := handler.Handle(t.Context(), testFile)
@@ -77,7 +82,7 @@ func TestIngestHandler_HandleWithOptions_CheckOnly(t *testing.T) {
 	emb := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
 	db := &mocks.VectorDB{}
 
-	svc := services.NewExtractionService(llm, emb, db)
+	svc := newTestExtractionService(llm, emb, db)
 	handler := NewIngestHandler(svc)
 
 	opts := IngestOptions{CheckOnly: true}
@@ -94,7 +99,7 @@ func TestIngestHandler_Handle_FileNotFound(t *testing.T) {
 	emb := &mocks.Embedder{}
 	db := &mocks.VectorDB{}
 
-	svc := services.NewExtractionService(llm, emb, db)
+	svc := newTestExtractionService(llm, emb, db)
 	handler := NewIngestHandler(svc)
 
 	_, err := handler.Handle(t.Context(), "/nonexistent/file.txt")
@@ -110,7 +115,7 @@ func TestIngestHandler_Handle_Directory(t *testing.T) {
 	emb := &mocks.Embedder{}
 	db := &mocks.VectorDB{}
 
-	svc := services.NewExtractionService(llm, emb, db)
+	svc := newTestExtractionService(llm, emb, db)
 	handler := NewIngestHandler(svc)
 
 	_, err := handler.Handle(t.Context(), tmpDir)
@@ -142,7 +147,7 @@ func TestIngestHandler_HandleDirectory(t *testing.T) {
 	emb := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
 	db := &mocks.VectorDB{}
 
-	svc := services.NewExtractionService(llm, emb, db)
+	svc := newTestExtractionService(llm, emb, db)
 	handler := NewIngestHandler(svc)
 
 	var progressFiles []string
@@ -167,7 +172,7 @@ func TestIngestHandler_HandleDirectory_NoMatches(t *testing.T) {
 	emb := &mocks.Embedder{}
 	db := &mocks.VectorDB{}
 
-	svc := services.NewExtractionService(llm, emb, db)
+	svc := newTestExtractionService(llm, emb, db)
 	handler := NewIngestHandler(svc)
 
 	_, err = handler.HandleDirectory(t.Context(), tmpDir, "*.txt", false, nil)
@@ -186,7 +191,7 @@ func TestIngestHandler_HandleDirectory_NotDirectory(t *testing.T) {
 	emb := &mocks.Embedder{}
 	db := &mocks.VectorDB{}
 
-	svc := services.NewExtractionService(llm, emb, db)
+	svc := newTestExtractionService(llm, emb, db)
 	handler := NewIngestHandler(svc)
 
 	_, err = handler.HandleDirectory(t.Context(), testFile, "*.txt", false, nil)

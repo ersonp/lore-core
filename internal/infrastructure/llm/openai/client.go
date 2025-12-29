@@ -16,10 +16,13 @@ import (
 	"github.com/ersonp/lore-core/internal/infrastructure/config"
 )
 
-const extractionPrompt = `You are a fact extractor for fictional worlds. Extract facts from the given text.
+// buildExtractionPrompt creates an extraction prompt with the given valid types.
+func buildExtractionPrompt(validTypes []string) string {
+	typeList := strings.Join(validTypes, ", ")
+	return fmt.Sprintf(`You are a fact extractor for fictional worlds. Extract facts from the given text.
 
 For each fact, identify:
-- type: character, location, event, relationship, rule, timeline
+- type: %s
 - subject: What/who the fact is about
 - predicate: The property or relationship
 - object: The value or target
@@ -33,7 +36,8 @@ Input: "Frodo has blue eyes and lives in the Shire."
 Output: [
   {"type": "character", "subject": "Frodo", "predicate": "eye_color", "object": "blue", "confidence": 0.95},
   {"type": "character", "subject": "Frodo", "predicate": "lives_in", "object": "the Shire", "confidence": 0.95}
-]`
+]`, typeList)
+}
 
 const consistencyPrompt = `Compare these new facts against existing facts. Identify any inconsistencies or contradictions.
 
@@ -77,13 +81,15 @@ func NewClient(cfg config.LLMConfig) (*Client, error) {
 }
 
 // ExtractFacts extracts facts from the given text.
-func (c *Client) ExtractFacts(ctx context.Context, text string) ([]entities.Fact, error) {
+func (c *Client) ExtractFacts(ctx context.Context, text string, validTypes []string) ([]entities.Fact, error) {
+	prompt := buildExtractionPrompt(validTypes)
+
 	resp, err := c.client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model: c.model,
 		Messages: []openai.ChatCompletionMessage{
 			{
 				Role:    openai.ChatMessageRoleSystem,
-				Content: extractionPrompt,
+				Content: prompt,
 			},
 			{
 				Role:    openai.ChatMessageRoleUser,

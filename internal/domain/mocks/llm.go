@@ -19,15 +19,17 @@ type LLMClient struct {
 	ConsistencyErr error
 
 	// Call tracking
-	ExtractFactsCallCount     int
-	ExtractFactsLastText      string
-	CheckConsistencyCallCount int
+	ExtractFactsCallCount      int
+	ExtractFactsLastText       string
+	ExtractFactsLastValidTypes []string
+	CheckConsistencyCallCount  int
 }
 
 // ExtractFacts returns the configured facts or error.
-func (m *LLMClient) ExtractFacts(ctx context.Context, text string) ([]entities.Fact, error) {
+func (m *LLMClient) ExtractFacts(ctx context.Context, text string, validTypes []string) ([]entities.Fact, error) {
 	m.ExtractFactsCallCount++
 	m.ExtractFactsLastText = text
+	m.ExtractFactsLastValidTypes = validTypes
 	if m.ExtractErr != nil {
 		return nil, m.ExtractErr
 	}
