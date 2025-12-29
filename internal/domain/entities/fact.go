@@ -4,8 +4,11 @@ package entities
 import "time"
 
 // FactType represents the category of a fact.
+// Validation of fact types is now handled by EntityTypeService, which supports
+// both built-in and custom user-defined types.
 type FactType string
 
+// Default fact types. Custom types can be added via EntityTypeService.
 const (
 	FactTypeCharacter    FactType = "character"
 	FactTypeLocation     FactType = "location"
@@ -31,7 +34,10 @@ type Fact struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
-// IsValid checks if the fact type is valid.
+// IsValid checks if the fact type is a built-in type.
+//
+// Deprecated: Use EntityTypeService.IsValid() for dynamic validation that
+// includes custom user-defined types. This method only checks built-in types.
 func (ft FactType) IsValid() bool {
 	switch ft {
 	case FactTypeCharacter,
