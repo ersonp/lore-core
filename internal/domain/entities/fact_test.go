@@ -6,6 +6,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// TestFactType_IsValid tests the deprecated IsValid() method.
+// Note: IsValid() only checks built-in types. For custom type validation,
+// use EntityTypeService.IsValid() which supports dynamic custom types.
 func TestFactType_IsValid(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -80,4 +83,17 @@ func TestFactTypeConstants(t *testing.T) {
 	assert.Equal(t, FactType("relationship"), FactTypeRelationship)
 	assert.Equal(t, FactType("rule"), FactTypeRule)
 	assert.Equal(t, FactType("timeline"), FactTypeTimeline)
+}
+
+// TestFactType_CustomTypesNotValidatedByIsValid documents that IsValid()
+// returns false for custom types. This is expected behavior - use
+// EntityTypeService.IsValid() for validating custom types.
+func TestFactType_CustomTypesNotValidatedByIsValid(t *testing.T) {
+	customTypes := []string{"weapon", "organization", "magic_system", "creature"}
+
+	for _, typeName := range customTypes {
+		customType := FactType(typeName)
+		assert.False(t, customType.IsValid(),
+			"IsValid() should return false for custom type %q; use EntityTypeService.IsValid()", typeName)
+	}
 }
