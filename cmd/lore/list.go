@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/ersonp/lore-core/internal/domain/entities"
-	"github.com/ersonp/lore-core/internal/domain/ports"
 )
 
 func newListCmd() *cobra.Command {
@@ -35,20 +35,25 @@ func newListCmd() *cobra.Command {
 func runList(cmd *cobra.Command, limit int, factType string, sourceFile string) error {
 	ctx := cmd.Context()
 
-	return withRepo(func(repo ports.VectorDB) error {
+	return withInternalDeps(func(d *internalDeps) error {
 		var facts []entities.Fact
 		var err error
 
 		switch {
 		case factType != "":
-			if !isValidType(factType) {
-				return fmt.Errorf("invalid type %q, valid types: %v", factType, validTypes)
+			// Validate type flag
+			if !d.entityTypeService.IsValid(ctx, factType) {
+				validTypes, verr := d.entityTypeService.GetValidTypes(ctx)
+				if verr != nil {
+					return fmt.Errorf("getting valid types: %w", verr)
+				}
+				return fmt.Errorf("invalid type %q, valid types: %s", factType, strings.Join(validTypes, ", "))
 			}
-			facts, err = repo.ListByType(ctx, entities.FactType(factType), limit)
+			facts, err = d.repo.ListByType(ctx, entities.FactType(factType), limit)
 		case sourceFile != "":
-			facts, err = repo.ListBySource(ctx, sourceFile, limit)
+			facts, err = d.repo.ListBySource(ctx, sourceFile, limit)
 		default:
-			facts, err = repo.List(ctx, limit, 0)
+			facts, err = d.repo.List(ctx, limit, 0)
 		}
 
 		if err != nil {
@@ -60,7 +65,7 @@ func runList(cmd *cobra.Command, limit int, factType string, sourceFile string) 
 			return nil
 		}
 
-		count, _ := repo.Count(ctx)
+		count, _ := d.repo.Count(ctx)
 		displayFacts(facts, count)
 		return nil
 	})

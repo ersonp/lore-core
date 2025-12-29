@@ -34,6 +34,7 @@ type internalDeps struct {
 	relationalDB      *sqlite.Repository
 	embedder          *embedder.Embedder
 	extractionService *services.ExtractionService
+	entityTypeService *services.EntityTypeService
 }
 
 // withDeps loads config and builds dependencies, then calls the provided function.
@@ -111,6 +112,7 @@ func withInternalDeps(fn func(*internalDeps) error) error {
 
 	extractionService := services.NewExtractionService(llmClient, emb, repo)
 	queryService := services.NewQueryService(emb, repo)
+	entityTypeService := services.NewEntityTypeService(relationalDB)
 
 	deps := &internalDeps{
 		Deps: Deps{
@@ -123,6 +125,7 @@ func withInternalDeps(fn func(*internalDeps) error) error {
 		relationalDB:      relationalDB,
 		embedder:          emb,
 		extractionService: extractionService,
+		entityTypeService: entityTypeService,
 	}
 
 	return fn(deps)
@@ -148,6 +151,15 @@ func withExtractionService(fn func(*services.ExtractionService, ports.VectorDB) 
 func withRelationalDB(fn func(ports.RelationalDB) error) error {
 	return withInternalDeps(func(d *internalDeps) error {
 		return fn(d.relationalDB)
+	})
+}
+
+// withEntityTypeService provides access to the EntityTypeService for type validation.
+//
+//nolint:unused // Will be used by types command
+func withEntityTypeService(fn func(*services.EntityTypeService) error) error {
+	return withInternalDeps(func(d *internalDeps) error {
+		return fn(d.entityTypeService)
 	})
 }
 

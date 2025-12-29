@@ -13,11 +13,19 @@ import (
 	"github.com/ersonp/lore-core/internal/infrastructure/parsers"
 )
 
+// newTestEntityTypeService creates an EntityTypeService with default types for testing.
+func newTestEntityTypeService() *EntityTypeService {
+	db := newMockRelationalDB()
+	svc := NewEntityTypeService(db)
+	_ = svc.LoadDefaults(context.Background())
+	return svc
+}
+
 func TestImportService_Import_ValidFacts(t *testing.T) {
 	embedder := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
 	vectorDB := &mocks.VectorDB{}
 
-	service := NewImportService(embedder, vectorDB)
+	service := NewImportService(embedder, vectorDB, newTestEntityTypeService())
 	rawFacts := []parsers.RawFact{
 		{Type: "character", Subject: "Gandalf", Predicate: "is a", Object: "wizard"},
 	}
@@ -35,7 +43,7 @@ func TestImportService_Import_ValidationErrors(t *testing.T) {
 	embedder := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
 	vectorDB := &mocks.VectorDB{}
 
-	service := NewImportService(embedder, vectorDB)
+	service := NewImportService(embedder, vectorDB, newTestEntityTypeService())
 	rawFacts := []parsers.RawFact{
 		{Type: "", Subject: "Gandalf", Predicate: "is", Object: "wizard"},
 		{Type: "character", Subject: "", Predicate: "is", Object: "wizard"},
@@ -54,7 +62,7 @@ func TestImportService_Import_InvalidFactType(t *testing.T) {
 	embedder := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
 	vectorDB := &mocks.VectorDB{}
 
-	service := NewImportService(embedder, vectorDB)
+	service := NewImportService(embedder, vectorDB, newTestEntityTypeService())
 	rawFacts := []parsers.RawFact{
 		{Type: "invalid_type", Subject: "Gandalf", Predicate: "is", Object: "wizard"},
 	}
@@ -72,7 +80,7 @@ func TestImportService_Import_InvalidConfidence(t *testing.T) {
 	embedder := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
 	vectorDB := &mocks.VectorDB{}
 
-	service := NewImportService(embedder, vectorDB)
+	service := NewImportService(embedder, vectorDB, newTestEntityTypeService())
 	invalidConf := 1.5
 	rawFacts := []parsers.RawFact{
 		{Type: "character", Subject: "Gandalf", Predicate: "is", Object: "wizard", Confidence: &invalidConf},
@@ -90,7 +98,7 @@ func TestImportService_Import_ConfidenceZero(t *testing.T) {
 	embedder := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
 	vectorDB := &mocks.VectorDB{}
 
-	service := NewImportService(embedder, vectorDB)
+	service := NewImportService(embedder, vectorDB, newTestEntityTypeService())
 	zeroConf := 0.0
 	rawFacts := []parsers.RawFact{
 		{Type: "character", Subject: "Gandalf", Predicate: "is", Object: "wizard", Confidence: &zeroConf},
@@ -111,7 +119,7 @@ func TestImportService_Import_ConfidenceUnset(t *testing.T) {
 	embedder := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
 	vectorDB := &mocks.VectorDB{}
 
-	service := NewImportService(embedder, vectorDB)
+	service := NewImportService(embedder, vectorDB, newTestEntityTypeService())
 	rawFacts := []parsers.RawFact{
 		{Type: "character", Subject: "Gandalf", Predicate: "is", Object: "wizard"}, // No confidence
 	}
@@ -130,7 +138,7 @@ func TestImportService_Import_DryRun(t *testing.T) {
 	embedder := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
 	vectorDB := &mocks.VectorDB{}
 
-	service := NewImportService(embedder, vectorDB)
+	service := NewImportService(embedder, vectorDB, newTestEntityTypeService())
 	rawFacts := []parsers.RawFact{
 		{Type: "character", Subject: "Gandalf", Predicate: "is", Object: "wizard"},
 	}
@@ -148,7 +156,7 @@ func TestImportService_Import_SkipExisting(t *testing.T) {
 		Facts: []entities.Fact{{ID: "existing-id"}},
 	}
 
-	service := NewImportService(embedder, vectorDB)
+	service := NewImportService(embedder, vectorDB, newTestEntityTypeService())
 	rawFacts := []parsers.RawFact{
 		{ID: "existing-id", Type: "character", Subject: "Gandalf", Predicate: "is", Object: "wizard"},
 		{ID: "new-id", Type: "character", Subject: "Frodo", Predicate: "is", Object: "hobbit"},
@@ -170,7 +178,7 @@ func TestImportService_Import_OverwritePreservesCreatedAt(t *testing.T) {
 		},
 	}
 
-	service := NewImportService(embedder, vectorDB)
+	service := NewImportService(embedder, vectorDB, newTestEntityTypeService())
 	rawFacts := []parsers.RawFact{
 		{ID: "existing-id", Type: "character", Subject: "Gandalf", Predicate: "is", Object: "wizard"},
 		{ID: "new-id", Type: "character", Subject: "Frodo", Predicate: "is", Object: "hobbit"},
@@ -200,7 +208,7 @@ func TestImportService_Import_EmptyInput(t *testing.T) {
 	embedder := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
 	vectorDB := &mocks.VectorDB{}
 
-	service := NewImportService(embedder, vectorDB)
+	service := NewImportService(embedder, vectorDB, newTestEntityTypeService())
 	result, err := service.Import(context.Background(), []parsers.RawFact{}, ImportOptions{})
 
 	require.NoError(t, err)
@@ -213,7 +221,7 @@ func TestImportService_Import_EmbeddingError(t *testing.T) {
 	embedder := &mocks.Embedder{Err: assert.AnError}
 	vectorDB := &mocks.VectorDB{}
 
-	service := NewImportService(embedder, vectorDB)
+	service := NewImportService(embedder, vectorDB, newTestEntityTypeService())
 	rawFacts := []parsers.RawFact{
 		{Type: "character", Subject: "Gandalf", Predicate: "is", Object: "wizard"},
 	}
@@ -228,7 +236,7 @@ func TestImportService_Import_SaveError(t *testing.T) {
 	embedder := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
 	vectorDB := &mocks.VectorDB{Err: assert.AnError}
 
-	service := NewImportService(embedder, vectorDB)
+	service := NewImportService(embedder, vectorDB, newTestEntityTypeService())
 	rawFacts := []parsers.RawFact{
 		{Type: "character", Subject: "Gandalf", Predicate: "is", Object: "wizard"},
 	}

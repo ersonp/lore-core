@@ -9,14 +9,26 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ersonp/lore-core/internal/domain/entities"
 	"github.com/ersonp/lore-core/internal/domain/mocks"
 	"github.com/ersonp/lore-core/internal/domain/services"
 )
 
+// newTestEntityTypeService creates an EntityTypeService with default types for testing.
+func newTestEntityTypeService() *services.EntityTypeService {
+	db := mocks.NewRelationalDB()
+	// Pre-populate with default entity types
+	for _, et := range entities.DefaultEntityTypes {
+		etCopy := et
+		db.Types[etCopy.Name] = &etCopy
+	}
+	return services.NewEntityTypeService(db)
+}
+
 func TestImportHandler_Handle_JSONFile(t *testing.T) {
 	embedder := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
 	vectorDB := &mocks.VectorDB{}
-	service := services.NewImportService(embedder, vectorDB)
+	service := services.NewImportService(embedder, vectorDB, newTestEntityTypeService())
 	handler := NewImportHandler(service)
 
 	// Create temp JSON file
@@ -38,7 +50,7 @@ func TestImportHandler_Handle_JSONFile(t *testing.T) {
 func TestImportHandler_Handle_CSVFile(t *testing.T) {
 	embedder := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
 	vectorDB := &mocks.VectorDB{}
-	service := services.NewImportService(embedder, vectorDB)
+	service := services.NewImportService(embedder, vectorDB, newTestEntityTypeService())
 	handler := NewImportHandler(service)
 
 	// Create temp CSV file
@@ -58,7 +70,7 @@ func TestImportHandler_Handle_CSVFile(t *testing.T) {
 func TestImportHandler_Handle_AutoFormat(t *testing.T) {
 	embedder := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
 	vectorDB := &mocks.VectorDB{}
-	service := services.NewImportService(embedder, vectorDB)
+	service := services.NewImportService(embedder, vectorDB, newTestEntityTypeService())
 	handler := NewImportHandler(service)
 
 	// Create temp JSON file
@@ -80,7 +92,7 @@ func TestImportHandler_Handle_AutoFormat(t *testing.T) {
 func TestImportHandler_Handle_ExplicitFormat(t *testing.T) {
 	embedder := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
 	vectorDB := &mocks.VectorDB{}
-	service := services.NewImportService(embedder, vectorDB)
+	service := services.NewImportService(embedder, vectorDB, newTestEntityTypeService())
 	handler := NewImportHandler(service)
 
 	// Create temp file with .txt extension but JSON content
@@ -102,7 +114,7 @@ func TestImportHandler_Handle_ExplicitFormat(t *testing.T) {
 func TestImportHandler_Handle_UnsupportedFormat(t *testing.T) {
 	embedder := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
 	vectorDB := &mocks.VectorDB{}
-	service := services.NewImportService(embedder, vectorDB)
+	service := services.NewImportService(embedder, vectorDB, newTestEntityTypeService())
 	handler := NewImportHandler(service)
 
 	// Create temp file with unsupported extension
@@ -119,7 +131,7 @@ func TestImportHandler_Handle_UnsupportedFormat(t *testing.T) {
 func TestImportHandler_Handle_FileNotFound(t *testing.T) {
 	embedder := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
 	vectorDB := &mocks.VectorDB{}
-	service := services.NewImportService(embedder, vectorDB)
+	service := services.NewImportService(embedder, vectorDB, newTestEntityTypeService())
 	handler := NewImportHandler(service)
 
 	_, err := handler.Handle(context.Background(), "/nonexistent/file.json", ImportOptions{})
@@ -131,7 +143,7 @@ func TestImportHandler_Handle_FileNotFound(t *testing.T) {
 func TestImportHandler_Handle_DryRun(t *testing.T) {
 	embedder := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
 	vectorDB := &mocks.VectorDB{}
-	service := services.NewImportService(embedder, vectorDB)
+	service := services.NewImportService(embedder, vectorDB, newTestEntityTypeService())
 	handler := NewImportHandler(service)
 
 	// Create temp JSON file
@@ -152,7 +164,7 @@ func TestImportHandler_Handle_DryRun(t *testing.T) {
 func TestImportHandler_Handle_EmptyFile(t *testing.T) {
 	embedder := &mocks.Embedder{EmbeddingResult: []float32{0.1, 0.2, 0.3}}
 	vectorDB := &mocks.VectorDB{}
-	service := services.NewImportService(embedder, vectorDB)
+	service := services.NewImportService(embedder, vectorDB, newTestEntityTypeService())
 	handler := NewImportHandler(service)
 
 	// Create temp empty JSON file
