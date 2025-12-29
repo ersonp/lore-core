@@ -44,6 +44,7 @@ func run(ctx context.Context) error {
 		newImportCmd(),
 		newWatchCmd(),
 		newWorldsCmd(),
+		newTypesCmd(),
 	)
 
 	return rootCmd.ExecuteContext(ctx)
