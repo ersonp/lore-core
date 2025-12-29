@@ -34,20 +34,3 @@ type Fact struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
-// IsValid checks if the fact type is a built-in type.
-//
-// Deprecated: Use EntityTypeService.IsValid() for dynamic validation that
-// includes custom user-defined types. This method only checks built-in types.
-func (ft FactType) IsValid() bool {
-	switch ft {
-	case FactTypeCharacter,
-		FactTypeLocation,
-		FactTypeEvent,
-		FactTypeRelationship,
-		FactTypeRule,
-		FactTypeTimeline:
-		return true
-	default:
-		return false
-	}
-}

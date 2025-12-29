@@ -154,15 +154,6 @@ func withRelationalDB(fn func(ports.RelationalDB) error) error {
 	})
 }
 
-// withEntityTypeService provides access to the EntityTypeService for type validation.
-//
-//nolint:unused // Will be used by types command
-func withEntityTypeService(fn func(*services.EntityTypeService) error) error {
-	return withInternalDeps(func(d *internalDeps) error {
-		return fn(d.entityTypeService)
-	})
-}
-
 // migrateDefaultEntityTypes seeds default entity types if the table is empty.
 // This provides transparent migration for worlds created before dynamic entity types.
 func migrateDefaultEntityTypes(ctx context.Context, db ports.RelationalDB) error {
