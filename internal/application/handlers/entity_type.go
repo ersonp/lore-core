@@ -36,14 +36,5 @@ func (h *EntityTypeHandler) HandleRemove(ctx context.Context, name string) error
 
 // HandleDescribe returns details about a specific entity type.
 func (h *EntityTypeHandler) HandleDescribe(ctx context.Context, name string) (*entities.EntityType, error) {
-	types, err := h.service.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for i := range types {
-		if types[i].Name == name {
-			return &types[i], nil
-		}
-	}
-	return nil, nil
+	return h.service.Get(ctx, name)
 }

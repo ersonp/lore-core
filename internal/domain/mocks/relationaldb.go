@@ -2,6 +2,7 @@ package mocks
 
 import (
 	"context"
+	"sort"
 
 	"github.com/ersonp/lore-core/internal/domain/entities"
 )
@@ -57,6 +58,10 @@ func (m *RelationalDB) ListEntityTypes(_ context.Context) ([]entities.EntityType
 	for _, t := range m.Types {
 		result = append(result, *t)
 	}
+	// Sort by name for deterministic test results
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name < result[j].Name
+	})
 	return result, nil
 }
 

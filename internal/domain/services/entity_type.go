@@ -53,6 +53,11 @@ func (s *EntityTypeService) List(ctx context.Context) ([]entities.EntityType, er
 	return s.relationalDB.ListEntityTypes(ctx)
 }
 
+// Get returns a specific entity type by name, or nil if not found.
+func (s *EntityTypeService) Get(ctx context.Context, name string) (*entities.EntityType, error) {
+	return s.relationalDB.FindEntityType(ctx, name)
+}
+
 // Add creates a new custom entity type.
 func (s *EntityTypeService) Add(ctx context.Context, name, description string) error {
 	name = strings.ToLower(strings.TrimSpace(name))
@@ -105,12 +110,24 @@ func (s *EntityTypeService) Remove(ctx context.Context, name string) error {
 
 // IsValid checks if a type name is valid (exists in database).
 func (s *EntityTypeService) IsValid(ctx context.Context, name string) bool {
+	// Fast path: check cache with read lock
 	s.cacheMu.RLock()
-	if _, ok := s.cache[name]; ok {
+	if len(s.cache) > 0 {
+		_, ok := s.cache[name]
 		s.cacheMu.RUnlock()
-		return true
+		return ok
 	}
 	s.cacheMu.RUnlock()
+
+	// Slow path: need to populate cache
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+
+	// Double-check: another goroutine may have populated the cache
+	if len(s.cache) > 0 {
+		_, ok := s.cache[name]
+		return ok
+	}
 
 	// Cache miss - load from database
 	types, err := s.relationalDB.ListEntityTypes(ctx)
@@ -118,16 +135,12 @@ func (s *EntityTypeService) IsValid(ctx context.Context, name string) bool {
 		return false
 	}
 
-	s.cacheMu.Lock()
 	s.cache = make(map[string]*entities.EntityType)
 	for i := range types {
 		s.cache[types[i].Name] = &types[i]
 	}
-	s.cacheMu.Unlock()
 
-	s.cacheMu.RLock()
 	_, ok := s.cache[name]
-	s.cacheMu.RUnlock()
 	return ok
 }
 
