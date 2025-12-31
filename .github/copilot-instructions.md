@@ -190,6 +190,101 @@ if len(facts) > 0 {
 
 ---
 
+### 7. Regex Compilation in Loop
+
+Flag `regexp.Compile` or `regexp.MustCompile` inside loops.
+
+```go
+// BAD - compiles regex on every iteration
+for _, text := range texts {
+    re := regexp.MustCompile(`\d+`)  // Expensive!
+    matches := re.FindAllString(text, -1)
+    process(matches)
+}
+
+// GOOD - compile once, reuse
+re := regexp.MustCompile(`\d+`)
+for _, text := range texts {
+    matches := re.FindAllString(text, -1)
+    process(matches)
+}
+
+// BEST - package-level for truly static patterns
+var digitRegex = regexp.MustCompile(`\d+`)
+```
+
+**Review guidance**: Flag any `regexp.Compile` or `regexp.MustCompile` call inside a loop. Suggest moving outside loop or to package level.
+
+---
+
+### 8. String Concatenation in Loop
+
+Flag `+=` string concatenation inside loops. Creates O(n²) allocations.
+
+```go
+// BAD - O(n²) allocations
+var result string
+for _, item := range items {
+    result += item.Name + ", "  // New allocation each iteration!
+}
+
+// GOOD - O(n) with strings.Builder
+var sb strings.Builder
+for _, item := range items {
+    sb.WriteString(item.Name)
+    sb.WriteString(", ")
+}
+result := sb.String()
+
+// ALSO GOOD - strings.Join for simple cases
+names := make([]string, len(items))
+for i, item := range items {
+    names[i] = item.Name
+}
+result := strings.Join(names, ", ")
+```
+
+**Review guidance**: Flag `+=` on string variables inside loops. Suggest `strings.Builder` or `strings.Join`.
+
+---
+
+### 9. Race Condition (Shared Data Without Sync)
+
+Flag goroutines accessing shared variables without synchronization.
+
+```go
+// BAD - race condition on counter
+var counter int
+for i := 0; i < 10; i++ {
+    go func() {
+        counter++  // Multiple goroutines write without lock!
+    }()
+}
+
+// GOOD - mutex protection
+var counter int
+var mu sync.Mutex
+for i := 0; i < 10; i++ {
+    go func() {
+        mu.Lock()
+        counter++
+        mu.Unlock()
+    }()
+}
+
+// GOOD - atomic operations for simple counters
+var counter atomic.Int64
+for i := 0; i < 10; i++ {
+    go func() {
+        counter.Add(1)
+    }()
+}
+```
+
+**Review guidance**: When `go func()` is used, check if the closure accesses variables from outer scope. If written by multiple goroutines, flag unless protected by mutex, channel, or atomic.
+
+---
+
 ## Project-Specific Patterns
 
 ### No API/Database Calls in Loops
