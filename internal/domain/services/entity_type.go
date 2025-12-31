@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -145,16 +146,49 @@ func (s *EntityTypeService) IsValid(ctx context.Context, name string) bool {
 }
 
 // GetValidTypes returns all valid type names.
+// Uses the same cache as IsValid for efficiency during batch operations.
 func (s *EntityTypeService) GetValidTypes(ctx context.Context) ([]string, error) {
+	// Fast path: check cache with read lock
+	s.cacheMu.RLock()
+	if len(s.cache) > 0 {
+		names := make([]string, 0, len(s.cache))
+		for name := range s.cache {
+			names = append(names, name)
+		}
+		s.cacheMu.RUnlock()
+		sort.Strings(names)
+		return names, nil
+	}
+	s.cacheMu.RUnlock()
+
+	// Slow path: need to populate cache
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+
+	// Double-check: another goroutine may have populated the cache
+	if len(s.cache) > 0 {
+		names := make([]string, 0, len(s.cache))
+		for name := range s.cache {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		return names, nil
+	}
+
+	// Cache miss - load from database
 	types, err := s.relationalDB.ListEntityTypes(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	s.cache = make(map[string]*entities.EntityType)
 	names := make([]string, len(types))
-	for i, t := range types {
-		names[i] = t.Name
+	for i := range types {
+		s.cache[types[i].Name] = &types[i]
+		names[i] = types[i].Name
 	}
+
+	sort.Strings(names)
 	return names, nil
 }
 

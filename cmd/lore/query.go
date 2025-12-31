@@ -88,4 +88,3 @@ func printFact(num int, fact *entities.Fact) {
 	}
 	fmt.Println()
 }
-
