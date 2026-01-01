@@ -10,7 +10,8 @@ import (
 // LLMClient defines the interface for LLM operations.
 type LLMClient interface {
 	// ExtractFacts extracts facts from the given text.
-	ExtractFacts(ctx context.Context, text string) ([]entities.Fact, error)
+	// validTypes specifies which entity types are valid for extraction.
+	ExtractFacts(ctx context.Context, text string, validTypes []string) ([]entities.Fact, error)
 
 	// CheckConsistency checks if new facts are consistent with existing facts.
 	CheckConsistency(ctx context.Context, newFacts []entities.Fact, existingFacts []entities.Fact) ([]ConsistencyIssue, error)

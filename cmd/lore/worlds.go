@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ersonp/lore-core/internal/domain/entities"
 	"github.com/ersonp/lore-core/internal/infrastructure/config"
 	embedder "github.com/ersonp/lore-core/internal/infrastructure/embedder/openai"
 	"github.com/ersonp/lore-core/internal/infrastructure/relationaldb/sqlite"
@@ -272,6 +273,14 @@ func initWorldSQLite(ctx context.Context, basePath, worldName string) error {
 
 	if err := repo.EnsureSchema(ctx); err != nil {
 		return fmt.Errorf("creating sqlite schema: %w", err)
+	}
+
+	// Seed default entity types
+	for _, et := range entities.DefaultEntityTypes {
+		etCopy := et
+		if err := repo.SaveEntityType(ctx, &etCopy); err != nil {
+			return fmt.Errorf("seeding entity type %s: %w", et.Name, err)
+		}
 	}
 
 	return nil

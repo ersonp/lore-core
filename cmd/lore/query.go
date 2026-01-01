@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -35,12 +36,19 @@ func newQueryCmd() *cobra.Command {
 func runQuery(cmd *cobra.Command, query string, limit int, factType string) error {
 	ctx := cmd.Context()
 
-	if factType != "" && !isValidType(factType) {
-		return fmt.Errorf("invalid type %q, valid types: %v", factType, validTypes)
-	}
+	return withInternalDeps(func(d *internalDeps) error {
+		// Validate type flag if provided
+		if factType != "" {
+			if !d.entityTypeService.IsValid(ctx, factType) {
+				validTypes, err := d.entityTypeService.GetValidTypes(ctx)
+				if err != nil {
+					return fmt.Errorf("getting valid types: %w", err)
+				}
+				return fmt.Errorf("invalid type %q, valid types: %s", factType, strings.Join(validTypes, ", "))
+			}
+		}
 
-	return withDeps(func(d *Deps) error {
-		result, err := executeQuery(ctx, d, query, limit, factType)
+		result, err := executeQuery(ctx, &d.Deps, query, limit, factType)
 		if err != nil {
 			return fmt.Errorf("querying facts: %w", err)
 		}
@@ -79,13 +87,4 @@ func printFact(num int, fact *entities.Fact) {
 		fmt.Printf("   Source: %s\n", fact.SourceFile)
 	}
 	fmt.Println()
-}
-
-func isValidType(t string) bool {
-	for _, valid := range validTypes {
-		if t == valid {
-			return true
-		}
-	}
-	return false
 }

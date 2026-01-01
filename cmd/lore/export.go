@@ -56,15 +56,22 @@ func runExport(cmd *cobra.Command, flags exportFlags) error {
 		return fmt.Errorf("invalid format %q, valid formats: %v", flags.format, validFormats)
 	}
 
-	if flags.factType != "" && !isValidType(flags.factType) {
-		return fmt.Errorf("invalid type %q, valid types: %v", flags.factType, validTypes)
-	}
-
 	ctx := cmd.Context()
 
-	return withRepo(func(repo ports.VectorDB) error {
+	return withInternalDeps(func(d *internalDeps) error {
+		// Validate type flag if provided
+		if flags.factType != "" {
+			if !d.entityTypeService.IsValid(ctx, flags.factType) {
+				validTypes, err := d.entityTypeService.GetValidTypes(ctx)
+				if err != nil {
+					return fmt.Errorf("getting valid types: %w", err)
+				}
+				return fmt.Errorf("invalid type %q, valid types: %s", flags.factType, strings.Join(validTypes, ", "))
+			}
+		}
+
 		e := &exporter{
-			repo:   repo,
+			repo:   d.repo,
 			format: flags.format,
 			output: flags.output,
 		}

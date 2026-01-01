@@ -103,7 +103,7 @@ func parseConflictStrategy(s string) (services.ConflictStrategy, error) {
 // withImportHandler creates an ImportHandler and calls the provided function.
 func withImportHandler(fn func(*handlers.ImportHandler) error) error {
 	return withInternalDeps(func(d *internalDeps) error {
-		importService := services.NewImportService(d.embedder, d.repo)
+		importService := services.NewImportService(d.embedder, d.repo, d.entityTypeService)
 		handler := handlers.NewImportHandler(importService)
 		return fn(handler)
 	})

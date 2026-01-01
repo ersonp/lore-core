@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -52,15 +53,17 @@ type ImportResult struct {
 
 // ImportService handles importing facts from external sources.
 type ImportService struct {
-	embedder ports.Embedder
-	vectorDB ports.VectorDB
+	embedder          ports.Embedder
+	vectorDB          ports.VectorDB
+	entityTypeService *EntityTypeService
 }
 
 // NewImportService creates a new import service.
-func NewImportService(embedder ports.Embedder, vectorDB ports.VectorDB) *ImportService {
+func NewImportService(embedder ports.Embedder, vectorDB ports.VectorDB, entityTypeService *EntityTypeService) *ImportService {
 	return &ImportService{
-		embedder: embedder,
-		vectorDB: vectorDB,
+		embedder:          embedder,
+		vectorDB:          vectorDB,
+		entityTypeService: entityTypeService,
 	}
 }
 
@@ -69,7 +72,7 @@ func (s *ImportService) Import(ctx context.Context, rawFacts []parsers.RawFact, 
 	result := &ImportResult{}
 
 	// Validate all facts first
-	validFacts, validationErrors := s.validateFacts(rawFacts)
+	validFacts, validationErrors := s.validateFacts(ctx, rawFacts)
 	result.Errors = validationErrors
 
 	if len(validFacts) == 0 {
@@ -103,7 +106,17 @@ func (s *ImportService) Import(ctx context.Context, rawFacts []parsers.RawFact, 
 }
 
 // validateFacts validates raw facts and returns valid ones with any errors.
-func (s *ImportService) validateFacts(rawFacts []parsers.RawFact) ([]parsers.RawFact, []ImportError) {
+func (s *ImportService) validateFacts(ctx context.Context, rawFacts []parsers.RawFact) ([]parsers.RawFact, []ImportError) {
+	// Get valid types once for all validations
+	validTypes, err := s.entityTypeService.GetValidTypes(ctx)
+	if err != nil {
+		return nil, []ImportError{{Message: fmt.Sprintf("failed to get valid types: %v", err)}}
+	}
+	validTypeSet := make(map[string]bool, len(validTypes))
+	for _, t := range validTypes {
+		validTypeSet[t] = true
+	}
+
 	valid := make([]parsers.RawFact, 0, len(rawFacts))
 	var errors []ImportError
 
@@ -114,7 +127,7 @@ func (s *ImportService) validateFacts(rawFacts []parsers.RawFact) ([]parsers.Raw
 			lineNum = i + 1
 		}
 
-		if err := validateRawFact(raw, lineNum); err != nil {
+		if err := s.validateRawFact(raw, lineNum, validTypeSet, validTypes); err != nil {
 			errors = append(errors, *err)
 			continue
 		}
@@ -126,7 +139,7 @@ func (s *ImportService) validateFacts(rawFacts []parsers.RawFact) ([]parsers.Raw
 }
 
 // validateRawFact validates a single raw fact and returns an error if invalid.
-func validateRawFact(raw *parsers.RawFact, lineNum int) *ImportError {
+func (s *ImportService) validateRawFact(raw *parsers.RawFact, lineNum int, validTypeSet map[string]bool, validTypes []string) *ImportError {
 	if raw.Type == "" {
 		return &ImportError{Line: lineNum, Field: "type", Message: "missing required field: type"}
 	}
@@ -140,13 +153,13 @@ func validateRawFact(raw *parsers.RawFact, lineNum int) *ImportError {
 		return &ImportError{Line: lineNum, Field: "object", Message: "missing required field: object"}
 	}
 
-	factType := entities.FactType(raw.Type)
-	if !factType.IsValid() {
+	// Validate type against pre-fetched valid types
+	if !validTypeSet[raw.Type] {
 		return &ImportError{
 			Line:    lineNum,
 			Field:   "type",
 			Value:   raw.Type,
-			Message: fmt.Sprintf("invalid type %q (valid: character, location, event, relationship, rule, timeline)", raw.Type),
+			Message: fmt.Sprintf("invalid type %q (valid: %s)", raw.Type, strings.Join(validTypes, ", ")),
 		}
 	}
 

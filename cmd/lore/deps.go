@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/ersonp/lore-core/internal/application/handlers"
+	"github.com/ersonp/lore-core/internal/domain/entities"
 	"github.com/ersonp/lore-core/internal/domain/ports"
 	"github.com/ersonp/lore-core/internal/domain/services"
 	"github.com/ersonp/lore-core/internal/infrastructure/config"
@@ -33,6 +34,7 @@ type internalDeps struct {
 	relationalDB      *sqlite.Repository
 	embedder          *embedder.Embedder
 	extractionService *services.ExtractionService
+	entityTypeService *services.EntityTypeService
 }
 
 // withDeps loads config and builds dependencies, then calls the provided function.
@@ -88,8 +90,14 @@ func withInternalDeps(fn func(*internalDeps) error) error {
 	defer relationalDB.Close()
 
 	// Ensure schema exists
-	if err := relationalDB.EnsureSchema(context.Background()); err != nil {
+	ctx := context.Background()
+	if err := relationalDB.EnsureSchema(ctx); err != nil {
 		return fmt.Errorf("ensuring sqlite schema: %w", err)
+	}
+
+	// Auto-migrate: seed default types if table is empty
+	if err := migrateDefaultEntityTypes(ctx, relationalDB); err != nil {
+		return fmt.Errorf("migrating entity types: %w", err)
 	}
 
 	emb, err := embedder.NewEmbedder(cfg.Embedder)
@@ -102,7 +110,8 @@ func withInternalDeps(fn func(*internalDeps) error) error {
 		return fmt.Errorf("creating llm client: %w", err)
 	}
 
-	extractionService := services.NewExtractionService(llmClient, emb, repo)
+	entityTypeService := services.NewEntityTypeService(relationalDB)
+	extractionService := services.NewExtractionService(llmClient, emb, repo, entityTypeService)
 	queryService := services.NewQueryService(emb, repo)
 
 	deps := &internalDeps{
@@ -116,6 +125,7 @@ func withInternalDeps(fn func(*internalDeps) error) error {
 		relationalDB:      relationalDB,
 		embedder:          emb,
 		extractionService: extractionService,
+		entityTypeService: entityTypeService,
 	}
 
 	return fn(deps)
@@ -142,4 +152,23 @@ func withRelationalDB(fn func(ports.RelationalDB) error) error {
 	return withInternalDeps(func(d *internalDeps) error {
 		return fn(d.relationalDB)
 	})
+}
+
+// migrateDefaultEntityTypes seeds default entity types if the table is empty.
+// This provides transparent migration for worlds created before dynamic entity types.
+func migrateDefaultEntityTypes(ctx context.Context, db ports.RelationalDB) error {
+	existingTypes, err := db.ListEntityTypes(ctx)
+	if err != nil {
+		return fmt.Errorf("listing entity types: %w", err)
+	}
+	if len(existingTypes) > 0 {
+		return nil
+	}
+	for _, et := range entities.DefaultEntityTypes {
+		etCopy := et
+		if err := db.SaveEntityType(ctx, &etCopy); err != nil {
+			return fmt.Errorf("seeding entity type %s: %w", et.Name, err)
+		}
+	}
+	return nil
 }

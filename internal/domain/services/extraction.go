@@ -36,18 +36,46 @@ const (
 
 // ExtractionService handles fact extraction from text.
 type ExtractionService struct {
-	llm      ports.LLMClient
-	embedder ports.Embedder
-	vectorDB ports.VectorDB
+	llm               ports.LLMClient
+	embedder          ports.Embedder
+	vectorDB          ports.VectorDB
+	entityTypeService *EntityTypeService
 }
 
 // NewExtractionService creates a new extraction service.
-func NewExtractionService(llm ports.LLMClient, embedder ports.Embedder, vectorDB ports.VectorDB) *ExtractionService {
+func NewExtractionService(llm ports.LLMClient, embedder ports.Embedder, vectorDB ports.VectorDB, entityTypeService *EntityTypeService) *ExtractionService {
 	return &ExtractionService{
-		llm:      llm,
-		embedder: embedder,
-		vectorDB: vectorDB,
+		llm:               llm,
+		embedder:          embedder,
+		vectorDB:          vectorDB,
+		entityTypeService: entityTypeService,
 	}
+}
+
+// extractFromChunks extracts facts from text chunks.
+// Note: LLM calls in loop are intentional - LLMs have token limits, so text
+// must be chunked and each chunk processed separately. Cannot be batched.
+func (s *ExtractionService) extractFromChunks(ctx context.Context, text string, sourceFile string, validTypes []string) ([]entities.Fact, error) {
+	chunks := ChunkText(text, DefaultChunkSize, DefaultChunkOverlap)
+
+	var allFacts []entities.Fact
+	for i, chunk := range chunks {
+		facts, err := s.llm.ExtractFacts(ctx, chunk, validTypes)
+		if err != nil {
+			return nil, fmt.Errorf("extracting facts from chunk %d: %w", i, err)
+		}
+
+		for j := range facts {
+			facts[j].ID = uuid.New().String()
+			facts[j].SourceFile = sourceFile
+			facts[j].CreatedAt = time.Now()
+			facts[j].UpdatedAt = time.Now()
+		}
+
+		allFacts = append(allFacts, facts...)
+	}
+
+	return allFacts, nil
 }
 
 // ExtractAndStore extracts facts from text, generates embeddings, and stores them.
@@ -61,24 +89,15 @@ func (s *ExtractionService) ExtractAndStore(ctx context.Context, text string, so
 
 // ExtractAndStoreWithOptions extracts facts with consistency checking options.
 func (s *ExtractionService) ExtractAndStoreWithOptions(ctx context.Context, text string, sourceFile string, opts ExtractionOptions) (*ExtractionResult, error) {
-	chunks := ChunkText(text, DefaultChunkSize, DefaultChunkOverlap)
+	// Get valid types for LLM prompt
+	validTypes, err := s.entityTypeService.GetValidTypes(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting valid types: %w", err)
+	}
 
-	var allFacts []entities.Fact
-	for i, chunk := range chunks {
-		//nolint:loopcall // Intentional: LLMs have token limits, text must be chunked
-		facts, err := s.llm.ExtractFacts(ctx, chunk)
-		if err != nil {
-			return nil, fmt.Errorf("extracting facts from chunk %d: %w", i, err)
-		}
-
-		for j := range facts {
-			facts[j].ID = uuid.New().String()
-			facts[j].SourceFile = sourceFile
-			facts[j].CreatedAt = time.Now()
-			facts[j].UpdatedAt = time.Now()
-		}
-
-		allFacts = append(allFacts, facts...)
+	allFacts, err := s.extractFromChunks(ctx, text, sourceFile, validTypes)
+	if err != nil {
+		return nil, err
 	}
 
 	if len(allFacts) == 0 {
@@ -215,11 +234,19 @@ func (c *streamChunker) flush(processChunk func(string) error) error {
 // ExtractFromReader extracts facts by streaming from an io.Reader.
 // This reduces memory from O(file_size) to O(chunk_size) for large files.
 func (s *ExtractionService) ExtractFromReader(ctx context.Context, r io.Reader, sourceFile string, opts ExtractionOptions) (*ExtractionResult, error) {
+	// Get valid types for LLM prompt
+	validTypes, err := s.entityTypeService.GetValidTypes(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting valid types: %w", err)
+	}
+
 	chunker := newStreamChunker(r)
 	var allFacts []entities.Fact
 
+	// processChunk is called per chunk - LLM calls in loop are intentional
+	// because LLMs have token limits and each chunk must be processed separately.
 	processChunk := func(chunkText string) error {
-		facts, err := s.llm.ExtractFacts(ctx, chunkText)
+		facts, err := s.llm.ExtractFacts(ctx, chunkText, validTypes)
 		if err != nil {
 			return fmt.Errorf("extracting facts: %w", err)
 		}
