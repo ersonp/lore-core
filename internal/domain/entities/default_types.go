@@ -29,21 +29,32 @@ var DefaultEntityTypes = []EntityType{
 	},
 }
 
-// DefaultTypeNames returns just the names of default types for quick lookup.
-func DefaultTypeNames() []string {
+// defaultTypeNames is pre-computed at package init for O(1) access.
+// Treat as read-only.
+var defaultTypeNames = func() []string {
 	names := make([]string, len(DefaultEntityTypes))
 	for i, t := range DefaultEntityTypes {
 		names[i] = t.Name
 	}
 	return names
+}()
+
+// defaultTypeSet is pre-computed at package init for O(1) lookup.
+var defaultTypeSet = func() map[string]bool {
+	m := make(map[string]bool, len(DefaultEntityTypes))
+	for _, t := range DefaultEntityTypes {
+		m[t.Name] = true
+	}
+	return m
+}()
+
+// DefaultTypeNames returns the names of default types.
+// The returned slice is shared and must not be modified by callers.
+func DefaultTypeNames() []string {
+	return defaultTypeNames
 }
 
-// IsDefaultType checks if a type name is a built-in default.
+// IsDefaultType checks if a type name is a built-in default. O(1) lookup.
 func IsDefaultType(name string) bool {
-	for _, t := range DefaultEntityTypes {
-		if t.Name == name {
-			return true
-		}
-	}
-	return false
+	return defaultTypeSet[name]
 }

@@ -20,6 +20,7 @@ var validTypeNameRegex = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 type EntityTypeService struct {
 	relationalDB ports.RelationalDB
 	cache        map[string]*entities.EntityType
+	sortedNames  []string // cached sorted names, populated with cache
 	cacheMu      sync.RWMutex
 }
 
@@ -32,13 +33,20 @@ func NewEntityTypeService(relationalDB ports.RelationalDB) *EntityTypeService {
 }
 
 // LoadDefaults seeds the default entity types into the database.
+// Optimized to list once then insert missing, reducing from O(n) Find calls to O(1) List.
 func (s *EntityTypeService) LoadDefaults(ctx context.Context) error {
+	existing, err := s.relationalDB.ListEntityTypes(ctx)
+	if err != nil {
+		return fmt.Errorf("listing entity types: %w", err)
+	}
+
+	existingSet := make(map[string]bool, len(existing))
+	for _, et := range existing {
+		existingSet[et.Name] = true
+	}
+
 	for _, et := range entities.DefaultEntityTypes {
-		existing, err := s.relationalDB.FindEntityType(ctx, et.Name)
-		if err != nil {
-			return fmt.Errorf("checking entity type %s: %w", et.Name, err)
-		}
-		if existing == nil {
+		if !existingSet[et.Name] {
 			etCopy := et
 			if err := s.relationalDB.SaveEntityType(ctx, &etCopy); err != nil {
 				return fmt.Errorf("seeding entity type %s: %w", et.Name, err)
@@ -136,27 +144,20 @@ func (s *EntityTypeService) IsValid(ctx context.Context, name string) bool {
 		return false
 	}
 
-	s.cache = make(map[string]*entities.EntityType)
-	for i := range types {
-		s.cache[types[i].Name] = &types[i]
-	}
-
+	s.populateCacheFromTypes(types)
 	_, ok := s.cache[name]
 	return ok
 }
 
 // GetValidTypes returns all valid type names.
 // Uses the same cache as IsValid for efficiency during batch operations.
+// The returned slice is shared and must not be modified by callers.
 func (s *EntityTypeService) GetValidTypes(ctx context.Context) ([]string, error) {
 	// Fast path: check cache with read lock
 	s.cacheMu.RLock()
 	if len(s.cache) > 0 {
-		names := make([]string, 0, len(s.cache))
-		for name := range s.cache {
-			names = append(names, name)
-		}
+		names := s.sortedNames
 		s.cacheMu.RUnlock()
-		sort.Strings(names)
 		return names, nil
 	}
 	s.cacheMu.RUnlock()
@@ -167,12 +168,7 @@ func (s *EntityTypeService) GetValidTypes(ctx context.Context) ([]string, error)
 
 	// Double-check: another goroutine may have populated the cache
 	if len(s.cache) > 0 {
-		names := make([]string, 0, len(s.cache))
-		for name := range s.cache {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		return names, nil
+		return s.sortedNames, nil
 	}
 
 	// Cache miss - load from database
@@ -181,15 +177,20 @@ func (s *EntityTypeService) GetValidTypes(ctx context.Context) ([]string, error)
 		return nil, err
 	}
 
-	s.cache = make(map[string]*entities.EntityType)
-	names := make([]string, len(types))
+	s.populateCacheFromTypes(types)
+	return s.sortedNames, nil
+}
+
+// populateCacheFromTypes fills the cache and sortedNames from a types slice.
+// Caller must hold cacheMu write lock.
+func (s *EntityTypeService) populateCacheFromTypes(types []entities.EntityType) {
+	s.cache = make(map[string]*entities.EntityType, len(types))
+	s.sortedNames = make([]string, len(types))
 	for i := range types {
 		s.cache[types[i].Name] = &types[i]
-		names[i] = types[i].Name
+		s.sortedNames[i] = types[i].Name
 	}
-
-	sort.Strings(names)
-	return names, nil
+	sort.Strings(s.sortedNames)
 }
 
 // BuildPromptTypeList builds a comma-separated list for LLM prompts.
@@ -204,5 +205,6 @@ func (s *EntityTypeService) BuildPromptTypeList(ctx context.Context) (string, er
 func (s *EntityTypeService) invalidateCache() {
 	s.cacheMu.Lock()
 	s.cache = make(map[string]*entities.EntityType)
+	s.sortedNames = nil
 	s.cacheMu.Unlock()
 }

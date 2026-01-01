@@ -53,6 +53,8 @@ func NewExtractionService(llm ports.LLMClient, embedder ports.Embedder, vectorDB
 }
 
 // extractFromChunks extracts facts from text chunks.
+// Note: LLM calls in loop are intentional - LLMs have token limits, so text
+// must be chunked and each chunk processed separately. Cannot be batched.
 func (s *ExtractionService) extractFromChunks(ctx context.Context, text string, sourceFile string, validTypes []string) ([]entities.Fact, error) {
 	chunks := ChunkText(text, DefaultChunkSize, DefaultChunkOverlap)
 
@@ -241,6 +243,8 @@ func (s *ExtractionService) ExtractFromReader(ctx context.Context, r io.Reader, 
 	chunker := newStreamChunker(r)
 	var allFacts []entities.Fact
 
+	// processChunk is called per chunk - LLM calls in loop are intentional
+	// because LLMs have token limits and each chunk must be processed separately.
 	processChunk := func(chunkText string) error {
 		facts, err := s.llm.ExtractFacts(ctx, chunkText, validTypes)
 		if err != nil {

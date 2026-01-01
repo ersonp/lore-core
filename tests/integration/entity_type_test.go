@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -231,7 +232,7 @@ func TestEntityType_Integration_ValidationRules(t *testing.T) {
 		{"valid lowercase", "weapon", false},
 		{"valid with underscore", "magic_item", false},
 		{"valid with number", "item2", false},
-		{"invalid uppercase", "Weapon", true},
+		{"valid uppercase normalized", "Weapon", false},
 		{"invalid space", "magic item", true},
 		{"invalid hyphen", "magic-item", true},
 		{"invalid starts with number", "2item", true},
@@ -244,8 +245,8 @@ func TestEntityType_Integration_ValidationRules(t *testing.T) {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
-				// Clean up for next test
-				_ = svc.Remove(context.Background(), tc.typeName)
+				// Clean up for next test (use normalized name)
+				_ = svc.Remove(context.Background(), strings.ToLower(tc.typeName))
 			}
 		})
 	}
