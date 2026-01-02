@@ -154,6 +154,17 @@ func withRelationalDB(fn func(ports.RelationalDB) error) error {
 	})
 }
 
+// withRelationshipHandler provides access to the RelationshipHandler for relationship commands.
+//
+//nolint:unused // Used by relate.go and relations.go (registered in Task 11)
+func withRelationshipHandler(fn func(*handlers.RelationshipHandler) error) error {
+	return withInternalDeps(func(d *internalDeps) error {
+		relationshipService := services.NewRelationshipService(d.repo, d.relationalDB, d.embedder)
+		handler := handlers.NewRelationshipHandler(relationshipService, d.repo)
+		return fn(handler)
+	})
+}
+
 // migrateDefaultEntityTypes seeds default entity types if the table is empty.
 // This provides transparent migration for worlds created before dynamic entity types.
 func migrateDefaultEntityTypes(ctx context.Context, db ports.RelationalDB) error {

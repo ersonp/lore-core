@@ -6,7 +6,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ersonp/lore-core/internal/application/handlers"
-	"github.com/ersonp/lore-core/internal/domain/services"
 )
 
 //nolint:unused // Will be registered in main.go (Task 11)
@@ -42,10 +41,7 @@ func runRelate(cmd *cobra.Command, args []string, bidirectional bool) error {
 	relType := args[1]
 	targetID := args[2]
 
-	return withInternalDeps(func(d *internalDeps) error {
-		svc := services.NewRelationshipService(d.repo, d.relationalDB, d.embedder)
-		handler := handlers.NewRelationshipHandler(svc, d.repo)
-
+	return withRelationshipHandler(func(handler *handlers.RelationshipHandler) error {
 		rel, err := handler.HandleCreate(ctx, sourceID, relType, targetID, bidirectional)
 		if err != nil {
 			return fmt.Errorf("creating relationship: %w", err)
@@ -77,10 +73,7 @@ func runRelateDelete(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 	relID := args[0]
 
-	return withInternalDeps(func(d *internalDeps) error {
-		svc := services.NewRelationshipService(d.repo, d.relationalDB, d.embedder)
-		handler := handlers.NewRelationshipHandler(svc, d.repo)
-
+	return withRelationshipHandler(func(handler *handlers.RelationshipHandler) error {
 		if err := handler.HandleDelete(ctx, relID); err != nil {
 			return fmt.Errorf("deleting relationship: %w", err)
 		}

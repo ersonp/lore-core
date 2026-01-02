@@ -10,7 +10,6 @@ import (
 
 	"github.com/ersonp/lore-core/internal/application/handlers"
 	"github.com/ersonp/lore-core/internal/domain/entities"
-	"github.com/ersonp/lore-core/internal/domain/services"
 )
 
 //nolint:unused // Used by newRelationsCmd
@@ -57,10 +56,7 @@ func runRelations(cmd *cobra.Command, args []string, flags relationsFlags) error
 		return fmt.Errorf("invalid format: %s (valid: tree, list, json)", flags.format)
 	}
 
-	return withInternalDeps(func(d *internalDeps) error {
-		svc := services.NewRelationshipService(d.repo, d.relationalDB, d.embedder)
-		handler := handlers.NewRelationshipHandler(svc, d.repo)
-
+	return withRelationshipHandler(func(handler *handlers.RelationshipHandler) error {
 		opts := handlers.ListOptions{
 			Type:  flags.relType,
 			Depth: flags.depth,
