@@ -111,3 +111,4 @@ linters-settings:
         sizeThreshold: 128
       rangeValCopy:
         sizeThreshold: 128
+

@@ -45,6 +45,9 @@ func run(ctx context.Context) error {
 		newWatchCmd(),
 		newWorldsCmd(),
 		newTypesCmd(),
+		newRelateCmd(),
+		newRelationsCmd(),
+		newEntitiesCmd(),
 	)
 
 	return rootCmd.ExecuteContext(ctx)

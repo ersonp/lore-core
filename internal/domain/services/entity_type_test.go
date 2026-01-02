@@ -12,12 +12,14 @@ import (
 
 // mockRelationalDB for testing EntityTypeService.
 type mockRelationalDB struct {
-	types map[string]*entities.EntityType
+	types    map[string]*entities.EntityType
+	entities map[string]*entities.Entity
 }
 
 func newMockRelationalDB() *mockRelationalDB {
 	return &mockRelationalDB{
-		types: make(map[string]*entities.EntityType),
+		types:    make(map[string]*entities.EntityType),
+		entities: make(map[string]*entities.Entity),
 	}
 }
 
@@ -59,11 +61,78 @@ func (m *mockRelationalDB) Close() error {
 	return nil
 }
 
+// Entity methods.
+
+func (m *mockRelationalDB) SaveEntity(_ context.Context, entity *entities.Entity) error {
+	m.entities[entity.ID] = entity
+	return nil
+}
+
+func (m *mockRelationalDB) FindEntityByName(_ context.Context, _, name string) (*entities.Entity, error) {
+	normalizedName := entities.NormalizeName(name)
+	for _, e := range m.entities {
+		if e.NormalizedName == normalizedName {
+			return e, nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *mockRelationalDB) FindOrCreateEntity(_ context.Context, worldID, name string) (*entities.Entity, error) {
+	normalizedName := entities.NormalizeName(name)
+	for _, e := range m.entities {
+		if e.NormalizedName == normalizedName {
+			return e, nil
+		}
+	}
+	entity := &entities.Entity{
+		ID:             "entity-" + name,
+		WorldID:        worldID,
+		Name:           name,
+		NormalizedName: normalizedName,
+	}
+	m.entities[entity.ID] = entity
+	return entity, nil
+}
+
+func (m *mockRelationalDB) FindEntityByID(_ context.Context, entityID string) (*entities.Entity, error) {
+	return m.entities[entityID], nil
+}
+
+func (m *mockRelationalDB) FindEntitiesByIDs(_ context.Context, ids []string) ([]*entities.Entity, error) {
+	result := make([]*entities.Entity, 0, len(ids))
+	for _, id := range ids {
+		if e, ok := m.entities[id]; ok {
+			result = append(result, e)
+		}
+	}
+	return result, nil
+}
+
+func (m *mockRelationalDB) ListEntities(_ context.Context, _ string, _, _ int) ([]*entities.Entity, error) {
+	return nil, nil
+}
+
+func (m *mockRelationalDB) SearchEntities(_ context.Context, _, _ string, _ int) ([]*entities.Entity, error) {
+	return nil, nil
+}
+
+func (m *mockRelationalDB) DeleteEntity(_ context.Context, entityID string) error {
+	delete(m.entities, entityID)
+	return nil
+}
+
+func (m *mockRelationalDB) CountEntities(_ context.Context, _ string) (int, error) {
+	return len(m.entities), nil
+}
+
+// Relationship methods.
+
 func (m *mockRelationalDB) SaveRelationship(_ context.Context, _ *entities.Relationship) error {
 	return nil
 }
 
-func (m *mockRelationalDB) FindRelationshipsByFact(_ context.Context, _ string) ([]entities.Relationship, error) {
+func (m *mockRelationalDB) FindRelationshipsByEntity(_ context.Context, _ string) ([]entities.Relationship, error) {
 	return nil, nil
 }
 
@@ -75,9 +144,23 @@ func (m *mockRelationalDB) DeleteRelationship(_ context.Context, _ string) error
 	return nil
 }
 
-func (m *mockRelationalDB) DeleteRelationshipsByFact(_ context.Context, _ string) error {
+func (m *mockRelationalDB) DeleteRelationshipsByEntity(_ context.Context, _ string) error {
 	return nil
 }
+
+func (m *mockRelationalDB) FindRelationshipBetween(_ context.Context, _, _ string) (*entities.Relationship, error) {
+	return nil, nil
+}
+
+func (m *mockRelationalDB) FindRelatedEntities(_ context.Context, _ string, _ int) ([]string, error) {
+	return nil, nil
+}
+
+func (m *mockRelationalDB) CountRelationships(_ context.Context) (int, error) {
+	return 0, nil
+}
+
+// Version methods.
 
 func (m *mockRelationalDB) SaveVersion(_ context.Context, _ *entities.FactVersion) error {
 	return nil
@@ -94,6 +177,8 @@ func (m *mockRelationalDB) FindLatestVersion(_ context.Context, _ string) (*enti
 func (m *mockRelationalDB) CountVersions(_ context.Context, _ string) (int, error) {
 	return 0, nil
 }
+
+// Audit log methods.
 
 func (m *mockRelationalDB) LogAction(_ context.Context, _ string, _ string, _ map[string]any) error {
 	return nil

@@ -7,11 +7,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/ersonp/lore-core/internal/domain/entities"
 	"github.com/ersonp/lore-core/internal/infrastructure/config"
+	"github.com/google/uuid"
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
 )
+
+// generateUUID returns a new UUID string.
+func generateUUID() string {
+	return uuid.New().String()
+}
+
+// timeNow returns the current time (can be mocked in tests).
+var timeNow = time.Now
 
 // Repository implements ports.RelationalDB using SQLite.
 type Repository struct {
@@ -67,17 +78,29 @@ func (r *Repository) Path() string {
 // EnsureSchema creates the database schema if it doesn't exist.
 func (r *Repository) EnsureSchema(ctx context.Context) error {
 	schema := `
-	-- Entity relationships (connects two facts)
+	-- Entities (named subjects that can have relationships)
+	CREATE TABLE IF NOT EXISTS entities (
+		id TEXT PRIMARY KEY,
+		world_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		normalized_name TEXT NOT NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(world_id, normalized_name)
+	);
+	CREATE INDEX IF NOT EXISTS idx_entities_world ON entities(world_id);
+	CREATE INDEX IF NOT EXISTS idx_entities_normalized ON entities(world_id, normalized_name);
+
+	-- Entity relationships (connects two entities)
 	CREATE TABLE IF NOT EXISTS relationships (
 		id TEXT PRIMARY KEY,
-		source_fact_id TEXT NOT NULL,
-		target_fact_id TEXT NOT NULL,
+		source_entity_id TEXT NOT NULL,
+		target_entity_id TEXT NOT NULL,
 		type TEXT NOT NULL,
 		bidirectional INTEGER NOT NULL DEFAULT 0,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
-	CREATE INDEX IF NOT EXISTS idx_relationships_source ON relationships(source_fact_id);
-	CREATE INDEX IF NOT EXISTS idx_relationships_target ON relationships(target_fact_id);
+	CREATE INDEX IF NOT EXISTS idx_relationships_source ON relationships(source_entity_id);
+	CREATE INDEX IF NOT EXISTS idx_relationships_target ON relationships(target_entity_id);
 	CREATE INDEX IF NOT EXISTS idx_relationships_type ON relationships(type);
 
 	-- Fact version history (tracks changes over time)
@@ -121,21 +144,253 @@ func (r *Repository) EnsureSchema(ctx context.Context) error {
 	return nil
 }
 
+// SaveEntity saves or updates an entity.
+func (r *Repository) SaveEntity(ctx context.Context, entity *entities.Entity) error {
+	query := `
+		INSERT INTO entities (id, world_id, name, normalized_name, created_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(world_id, normalized_name) DO UPDATE SET
+			name = excluded.name
+	`
+	_, err := r.db.ExecContext(ctx, query,
+		entity.ID,
+		entity.WorldID,
+		entity.Name,
+		entity.NormalizedName,
+		entity.CreatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("saving entity: %w", err)
+	}
+	return nil
+}
+
+// FindEntityByName finds an entity by its normalized name (case-insensitive).
+func (r *Repository) FindEntityByName(ctx context.Context, worldID, name string) (*entities.Entity, error) {
+	normalizedName := entities.NormalizeName(name)
+	query := `
+		SELECT id, world_id, name, normalized_name, created_at
+		FROM entities
+		WHERE world_id = ? AND normalized_name = ?
+	`
+	row := r.db.QueryRowContext(ctx, query, worldID, normalizedName)
+
+	var entity entities.Entity
+	err := row.Scan(
+		&entity.ID,
+		&entity.WorldID,
+		&entity.Name,
+		&entity.NormalizedName,
+		&entity.CreatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scanning entity: %w", err)
+	}
+	return &entity, nil
+}
+
+// FindOrCreateEntity finds an entity by name or creates it if not found.
+// This method is atomic - it uses INSERT OR IGNORE followed by SELECT to avoid race conditions.
+func (r *Repository) FindOrCreateEntity(ctx context.Context, worldID, name string) (*entities.Entity, error) {
+	normalizedName := entities.NormalizeName(name)
+
+	// Atomically insert if not exists (ON CONFLICT DO NOTHING)
+	insertQuery := `
+		INSERT OR IGNORE INTO entities (id, world_id, name, normalized_name, created_at)
+		VALUES (?, ?, ?, ?, ?)
+	`
+	_, err := r.db.ExecContext(ctx, insertQuery,
+		generateUUID(),
+		worldID,
+		name,
+		normalizedName,
+		timeNow(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("inserting entity: %w", err)
+	}
+
+	// Always fetch the entity (either newly inserted or pre-existing)
+	return r.FindEntityByName(ctx, worldID, name)
+}
+
+// FindEntityByID finds an entity by its ID.
+func (r *Repository) FindEntityByID(ctx context.Context, entityID string) (*entities.Entity, error) {
+	query := `
+		SELECT id, world_id, name, normalized_name, created_at
+		FROM entities
+		WHERE id = ?
+	`
+	row := r.db.QueryRowContext(ctx, query, entityID)
+
+	var entity entities.Entity
+	err := row.Scan(
+		&entity.ID,
+		&entity.WorldID,
+		&entity.Name,
+		&entity.NormalizedName,
+		&entity.CreatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scanning entity: %w", err)
+	}
+	return &entity, nil
+}
+
+// FindEntitiesByIDs finds multiple entities by their IDs in a single query.
+func (r *Repository) FindEntitiesByIDs(ctx context.Context, ids []string) ([]*entities.Entity, error) {
+	if len(ids) == 0 {
+		return []*entities.Entity{}, nil
+	}
+
+	// Build placeholders for IN clause
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		SELECT id, world_id, name, normalized_name, created_at
+		FROM entities
+		WHERE id IN (%s)
+	`, strings.Join(placeholders, ","))
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying entities: %w", err)
+	}
+	defer rows.Close()
+
+	result := make([]*entities.Entity, 0, len(ids))
+	for rows.Next() {
+		var entity entities.Entity
+		if err := rows.Scan(
+			&entity.ID,
+			&entity.WorldID,
+			&entity.Name,
+			&entity.NormalizedName,
+			&entity.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scanning entity: %w", err)
+		}
+		result = append(result, &entity)
+	}
+	return result, rows.Err()
+}
+
+// ListEntities lists all entities for a world with pagination.
+func (r *Repository) ListEntities(ctx context.Context, worldID string, limit, offset int) ([]*entities.Entity, error) {
+	query := `
+		SELECT id, world_id, name, normalized_name, created_at
+		FROM entities
+		WHERE world_id = ?
+		ORDER BY name ASC
+		LIMIT ? OFFSET ?
+	`
+	rows, err := r.db.QueryContext(ctx, query, worldID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("querying entities: %w", err)
+	}
+	defer rows.Close()
+
+	result := make([]*entities.Entity, 0, limit)
+	for rows.Next() {
+		var entity entities.Entity
+		if err := rows.Scan(
+			&entity.ID,
+			&entity.WorldID,
+			&entity.Name,
+			&entity.NormalizedName,
+			&entity.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scanning entity: %w", err)
+		}
+		result = append(result, &entity)
+	}
+	return result, rows.Err()
+}
+
+// SearchEntities searches entities by name pattern.
+func (r *Repository) SearchEntities(ctx context.Context, worldID, query string, limit int) ([]*entities.Entity, error) {
+	normalizedQuery := "%" + entities.NormalizeName(query) + "%"
+	sqlQuery := `
+		SELECT id, world_id, name, normalized_name, created_at
+		FROM entities
+		WHERE world_id = ? AND normalized_name LIKE ?
+		ORDER BY name ASC
+		LIMIT ?
+	`
+	rows, err := r.db.QueryContext(ctx, sqlQuery, worldID, normalizedQuery, limit)
+	if err != nil {
+		return nil, fmt.Errorf("searching entities: %w", err)
+	}
+	defer rows.Close()
+
+	result := make([]*entities.Entity, 0, limit)
+	for rows.Next() {
+		var entity entities.Entity
+		if err := rows.Scan(
+			&entity.ID,
+			&entity.WorldID,
+			&entity.Name,
+			&entity.NormalizedName,
+			&entity.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scanning entity: %w", err)
+		}
+		result = append(result, &entity)
+	}
+	return result, rows.Err()
+}
+
+// DeleteEntity deletes an entity by ID.
+func (r *Repository) DeleteEntity(ctx context.Context, entityID string) error {
+	query := `DELETE FROM entities WHERE id = ?`
+	result, err := r.db.ExecContext(ctx, query, entityID)
+	if err != nil {
+		return fmt.Errorf("deleting entity: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("entity not found: %s", entityID)
+	}
+	return nil
+}
+
+// CountEntities returns the total number of entities for a world.
+func (r *Repository) CountEntities(ctx context.Context, worldID string) (int, error) {
+	query := `SELECT COUNT(*) FROM entities WHERE world_id = ?`
+	var count int
+	err := r.db.QueryRowContext(ctx, query, worldID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("counting entities: %w", err)
+	}
+	return count, nil
+}
+
 // SaveRelationship saves or updates a relationship.
 func (r *Repository) SaveRelationship(ctx context.Context, rel *entities.Relationship) error {
 	query := `
-		INSERT INTO relationships (id, source_fact_id, target_fact_id, type, bidirectional, created_at)
+		INSERT INTO relationships (id, source_entity_id, target_entity_id, type, bidirectional, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
-			source_fact_id = excluded.source_fact_id,
-			target_fact_id = excluded.target_fact_id,
+			source_entity_id = excluded.source_entity_id,
+			target_entity_id = excluded.target_entity_id,
 			type = excluded.type,
 			bidirectional = excluded.bidirectional
 	`
 	_, err := r.db.ExecContext(ctx, query,
 		rel.ID,
-		rel.SourceFactID,
-		rel.TargetFactID,
+		rel.SourceEntityID,
+		rel.TargetEntityID,
 		string(rel.Type),
 		rel.Bidirectional,
 		rel.CreatedAt,
@@ -146,22 +401,22 @@ func (r *Repository) SaveRelationship(ctx context.Context, rel *entities.Relatio
 	return nil
 }
 
-// FindRelationshipsByFact finds all relationships involving a fact.
-// Returns relationships where the fact is source, or target if bidirectional.
-func (r *Repository) FindRelationshipsByFact(ctx context.Context, factID string) ([]entities.Relationship, error) {
+// FindRelationshipsByEntity finds all relationships involving an entity.
+// Returns relationships where the entity is source, or target if bidirectional.
+func (r *Repository) FindRelationshipsByEntity(ctx context.Context, entityID string) ([]entities.Relationship, error) {
 	query := `
-		SELECT id, source_fact_id, target_fact_id, type, bidirectional, created_at
+		SELECT id, source_entity_id, target_entity_id, type, bidirectional, created_at
 		FROM relationships
-		WHERE source_fact_id = ? OR (target_fact_id = ? AND bidirectional = 1)
+		WHERE source_entity_id = ? OR (target_entity_id = ? AND bidirectional = 1)
 		ORDER BY created_at DESC
 	`
-	return r.queryRelationships(ctx, query, factID, factID)
+	return r.queryRelationships(ctx, query, entityID, entityID)
 }
 
 // FindRelationshipsByType finds all relationships of a given type.
 func (r *Repository) FindRelationshipsByType(ctx context.Context, relType string) ([]entities.Relationship, error) {
 	query := `
-		SELECT id, source_fact_id, target_fact_id, type, bidirectional, created_at
+		SELECT id, source_entity_id, target_entity_id, type, bidirectional, created_at
 		FROM relationships
 		WHERE type = ?
 		ORDER BY created_at DESC
@@ -183,14 +438,114 @@ func (r *Repository) DeleteRelationship(ctx context.Context, id string) error {
 	return nil
 }
 
-// DeleteRelationshipsByFact deletes all relationships involving a fact.
-func (r *Repository) DeleteRelationshipsByFact(ctx context.Context, factID string) error {
-	query := `DELETE FROM relationships WHERE source_fact_id = ? OR target_fact_id = ?`
-	_, err := r.db.ExecContext(ctx, query, factID, factID)
+// DeleteRelationshipsByEntity deletes all relationships involving an entity.
+func (r *Repository) DeleteRelationshipsByEntity(ctx context.Context, entityID string) error {
+	query := `DELETE FROM relationships WHERE source_entity_id = ? OR target_entity_id = ?`
+	_, err := r.db.ExecContext(ctx, query, entityID, entityID)
 	if err != nil {
-		return fmt.Errorf("deleting relationships by fact: %w", err)
+		return fmt.Errorf("deleting relationships by entity: %w", err)
 	}
 	return nil
+}
+
+// FindRelationshipBetween finds a direct relationship between two entities.
+// Returns nil if no relationship exists. Checks both directions for bidirectional relationships.
+func (r *Repository) FindRelationshipBetween(ctx context.Context, sourceEntityID, targetEntityID string) (*entities.Relationship, error) {
+	query := `
+		SELECT id, source_entity_id, target_entity_id, type, bidirectional, created_at
+		FROM relationships
+		WHERE (source_entity_id = ? AND target_entity_id = ?)
+		   OR (bidirectional = 1 AND source_entity_id = ? AND target_entity_id = ?)
+		LIMIT 1
+	`
+	row := r.db.QueryRowContext(ctx, query, sourceEntityID, targetEntityID, targetEntityID, sourceEntityID)
+
+	var rel entities.Relationship
+	var relType string
+
+	err := row.Scan(
+		&rel.ID,
+		&rel.SourceEntityID,
+		&rel.TargetEntityID,
+		&relType,
+		&rel.Bidirectional,
+		&rel.CreatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scanning relationship: %w", err)
+	}
+
+	rel.Type = entities.RelationType(relType)
+	return &rel, nil
+}
+
+// FindRelatedEntities finds all entity IDs connected to the given entity up to the specified depth.
+// Depth 1 returns directly connected entities, depth 2 includes their connections, etc.
+// Uses a recursive CTE for efficient graph traversal.
+func (r *Repository) FindRelatedEntities(ctx context.Context, entityID string, depth int) ([]string, error) {
+	if depth < 1 {
+		return []string{}, nil
+	}
+
+	query := `
+		WITH RECURSIVE related(entity_id, level) AS (
+			-- Base case: direct connections from source
+			SELECT target_entity_id, 1
+			FROM relationships
+			WHERE source_entity_id = ?
+			UNION
+			SELECT source_entity_id, 1
+			FROM relationships
+			WHERE target_entity_id = ? AND bidirectional = 1
+
+			UNION
+
+			-- Recursive case: connections from already found entities
+			SELECT r.target_entity_id, related.level + 1
+			FROM relationships r
+			JOIN related ON r.source_entity_id = related.entity_id
+			WHERE related.level < ?
+			UNION
+			SELECT r.source_entity_id, related.level + 1
+			FROM relationships r
+			JOIN related ON r.target_entity_id = related.entity_id AND r.bidirectional = 1
+			WHERE related.level < ?
+		)
+		SELECT DISTINCT entity_id
+		FROM related
+		WHERE entity_id != ?
+		ORDER BY entity_id
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, entityID, entityID, depth, depth, entityID)
+	if err != nil {
+		return nil, fmt.Errorf("querying related entities: %w", err)
+	}
+	defer rows.Close()
+
+	entityIDs := make([]string, 0, 16)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scanning entity id: %w", err)
+		}
+		entityIDs = append(entityIDs, id)
+	}
+	return entityIDs, rows.Err()
+}
+
+// CountRelationships returns the total number of relationships in the database.
+func (r *Repository) CountRelationships(ctx context.Context) (int, error) {
+	query := `SELECT COUNT(*) FROM relationships`
+	var count int
+	err := r.db.QueryRowContext(ctx, query).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("counting relationships: %w", err)
+	}
+	return count, nil
 }
 
 // queryRelationships is a helper to execute relationship queries.
@@ -207,8 +562,8 @@ func (r *Repository) queryRelationships(ctx context.Context, query string, args 
 		var relType string
 		if err := rows.Scan(
 			&rel.ID,
-			&rel.SourceFactID,
-			&rel.TargetFactID,
+			&rel.SourceEntityID,
+			&rel.TargetEntityID,
 			&relType,
 			&rel.Bidirectional,
 			&rel.CreatedAt,
