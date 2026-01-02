@@ -155,8 +155,6 @@ func withRelationalDB(fn func(ports.RelationalDB) error) error {
 }
 
 // withRelationshipHandler provides access to the RelationshipHandler for relationship commands.
-//
-//nolint:unused // Used by relate.go and relations.go (registered in Task 11)
 func withRelationshipHandler(fn func(*handlers.RelationshipHandler) error) error {
 	return withInternalDeps(func(d *internalDeps) error {
 		relationshipService := services.NewRelationshipService(d.repo, d.relationalDB, d.embedder)

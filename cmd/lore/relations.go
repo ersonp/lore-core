@@ -12,14 +12,12 @@ import (
 	"github.com/ersonp/lore-core/internal/domain/entities"
 )
 
-//nolint:unused // Used by newRelationsCmd
 type relationsFlags struct {
 	relType string
 	depth   int
 	format  string
 }
 
-//nolint:unused // Will be registered in main.go (Task 11)
 func newRelationsCmd() *cobra.Command {
 	var flags relationsFlags
 
@@ -40,7 +38,6 @@ func newRelationsCmd() *cobra.Command {
 	return cmd
 }
 
-//nolint:unused // Called by newRelationsCmd
 func runRelations(cmd *cobra.Command, args []string, flags relationsFlags) error {
 	ctx := cmd.Context()
 	factID := args[0]
@@ -76,7 +73,6 @@ func runRelations(cmd *cobra.Command, args []string, flags relationsFlags) error
 	})
 }
 
-//nolint:unused // Called by runRelations
 func printRelations(factID string, result *handlers.ListResult, format string) error {
 	switch format {
 	case "json":
@@ -90,7 +86,6 @@ func printRelations(factID string, result *handlers.ListResult, format string) e
 	}
 }
 
-//nolint:unused // Called by printRelations
 func printRelationsJSON(result *handlers.ListResult) error {
 	data, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
@@ -100,7 +95,6 @@ func printRelationsJSON(result *handlers.ListResult) error {
 	return nil
 }
 
-//nolint:unused // Called by printRelations
 func printRelationsList(factID string, result *handlers.ListResult) error {
 	fmt.Printf("Relationships for %s:\n", factID)
 	fmt.Println(strings.Repeat("-", 60))
@@ -126,7 +120,6 @@ func printRelationsList(factID string, result *handlers.ListResult) error {
 	return nil
 }
 
-//nolint:unused // Called by printRelations
 func printRelationsTree(factID string, result *handlers.ListResult) error {
 	// Find the root fact name
 	rootName := factID
@@ -173,7 +166,6 @@ func printRelationsTree(factID string, result *handlers.ListResult) error {
 	return nil
 }
 
-//nolint:unused // Helper function
 func getFactName(fact *entities.Fact) string {
 	if fact == nil {
 		return "unknown"

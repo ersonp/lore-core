@@ -8,7 +8,6 @@ import (
 	"github.com/ersonp/lore-core/internal/application/handlers"
 )
 
-//nolint:unused // Will be registered in main.go (Task 11)
 func newRelateCmd() *cobra.Command {
 	var bidirectional bool
 
@@ -34,7 +33,6 @@ Valid relationship types:
 	return cmd
 }
 
-//nolint:unused // Called by newRelateCmd
 func runRelate(cmd *cobra.Command, args []string, bidirectional bool) error {
 	ctx := cmd.Context()
 	sourceID := args[0]
@@ -57,7 +55,6 @@ func runRelate(cmd *cobra.Command, args []string, bidirectional bool) error {
 	})
 }
 
-//nolint:unused // Added as subcommand to relate
 func newRelateDeleteCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "delete <relationship-id>",
@@ -68,7 +65,6 @@ func newRelateDeleteCmd() *cobra.Command {
 	}
 }
 
-//nolint:unused // Called by newRelateDeleteCmd
 func runRelateDelete(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 	relID := args[0]
