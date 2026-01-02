@@ -32,6 +32,17 @@ type RelationalDB interface {
 	// DeleteRelationshipsByFact deletes all relationships involving a fact.
 	DeleteRelationshipsByFact(ctx context.Context, factID string) error
 
+	// FindRelationshipBetween finds a direct relationship between two facts.
+	// Returns nil if no relationship exists.
+	FindRelationshipBetween(ctx context.Context, sourceID, targetID string) (*entities.Relationship, error)
+
+	// FindRelatedFacts finds all fact IDs connected to the given fact up to the specified depth.
+	// Depth 1 returns directly connected facts, depth 2 includes their connections, etc.
+	FindRelatedFacts(ctx context.Context, factID string, depth int) ([]string, error)
+
+	// CountRelationships returns the total number of relationships in the database.
+	CountRelationships(ctx context.Context) (int, error)
+
 	// SaveVersion saves a new fact version.
 	SaveVersion(ctx context.Context, version *entities.FactVersion) error
 

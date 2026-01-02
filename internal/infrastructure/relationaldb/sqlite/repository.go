@@ -193,6 +193,106 @@ func (r *Repository) DeleteRelationshipsByFact(ctx context.Context, factID strin
 	return nil
 }
 
+// FindRelationshipBetween finds a direct relationship between two facts.
+// Returns nil if no relationship exists. Checks both directions for bidirectional relationships.
+func (r *Repository) FindRelationshipBetween(ctx context.Context, sourceID, targetID string) (*entities.Relationship, error) {
+	query := `
+		SELECT id, source_fact_id, target_fact_id, type, bidirectional, created_at
+		FROM relationships
+		WHERE (source_fact_id = ? AND target_fact_id = ?)
+		   OR (bidirectional = 1 AND source_fact_id = ? AND target_fact_id = ?)
+		LIMIT 1
+	`
+	row := r.db.QueryRowContext(ctx, query, sourceID, targetID, targetID, sourceID)
+
+	var rel entities.Relationship
+	var relType string
+
+	err := row.Scan(
+		&rel.ID,
+		&rel.SourceFactID,
+		&rel.TargetFactID,
+		&relType,
+		&rel.Bidirectional,
+		&rel.CreatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scanning relationship: %w", err)
+	}
+
+	rel.Type = entities.RelationType(relType)
+	return &rel, nil
+}
+
+// FindRelatedFacts finds all fact IDs connected to the given fact up to the specified depth.
+// Depth 1 returns directly connected facts, depth 2 includes their connections, etc.
+// Uses a recursive CTE for efficient graph traversal.
+func (r *Repository) FindRelatedFacts(ctx context.Context, factID string, depth int) ([]string, error) {
+	if depth < 1 {
+		return []string{}, nil
+	}
+
+	query := `
+		WITH RECURSIVE related(fact_id, level) AS (
+			-- Base case: direct connections from source
+			SELECT target_fact_id, 1
+			FROM relationships
+			WHERE source_fact_id = ?
+			UNION
+			SELECT source_fact_id, 1
+			FROM relationships
+			WHERE target_fact_id = ? AND bidirectional = 1
+
+			UNION
+
+			-- Recursive case: connections from already found facts
+			SELECT r.target_fact_id, related.level + 1
+			FROM relationships r
+			JOIN related ON r.source_fact_id = related.fact_id
+			WHERE related.level < ?
+			UNION
+			SELECT r.source_fact_id, related.level + 1
+			FROM relationships r
+			JOIN related ON r.target_fact_id = related.fact_id AND r.bidirectional = 1
+			WHERE related.level < ?
+		)
+		SELECT DISTINCT fact_id
+		FROM related
+		WHERE fact_id != ?
+		ORDER BY fact_id
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, factID, factID, depth, depth, factID)
+	if err != nil {
+		return nil, fmt.Errorf("querying related facts: %w", err)
+	}
+	defer rows.Close()
+
+	facts := make([]string, 0, 16)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scanning fact id: %w", err)
+		}
+		facts = append(facts, id)
+	}
+	return facts, rows.Err()
+}
+
+// CountRelationships returns the total number of relationships in the database.
+func (r *Repository) CountRelationships(ctx context.Context) (int, error) {
+	query := `SELECT COUNT(*) FROM relationships`
+	var count int
+	err := r.db.QueryRowContext(ctx, query).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("counting relationships: %w", err)
+	}
+	return count, nil
+}
+
 // queryRelationships is a helper to execute relationship queries.
 func (r *Repository) queryRelationships(ctx context.Context, query string, args ...any) ([]entities.Relationship, error) {
 	rows, err := r.db.QueryContext(ctx, query, args...)

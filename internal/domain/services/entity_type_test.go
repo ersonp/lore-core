@@ -79,6 +79,18 @@ func (m *mockRelationalDB) DeleteRelationshipsByFact(_ context.Context, _ string
 	return nil
 }
 
+func (m *mockRelationalDB) FindRelationshipBetween(_ context.Context, _, _ string) (*entities.Relationship, error) {
+	return nil, nil
+}
+
+func (m *mockRelationalDB) FindRelatedFacts(_ context.Context, _ string, _ int) ([]string, error) {
+	return nil, nil
+}
+
+func (m *mockRelationalDB) CountRelationships(_ context.Context) (int, error) {
+	return 0, nil
+}
+
 func (m *mockRelationalDB) SaveVersion(_ context.Context, _ *entities.FactVersion) error {
 	return nil
 }

@@ -101,6 +101,21 @@ func (m *RelationalDB) DeleteRelationshipsByFact(_ context.Context, _ string) er
 	return m.Err
 }
 
+// FindRelationshipBetween finds a direct relationship between two facts.
+func (m *RelationalDB) FindRelationshipBetween(_ context.Context, _, _ string) (*entities.Relationship, error) {
+	return nil, m.Err
+}
+
+// FindRelatedFacts finds all fact IDs connected to the given fact up to the specified depth.
+func (m *RelationalDB) FindRelatedFacts(_ context.Context, _ string, _ int) ([]string, error) {
+	return nil, m.Err
+}
+
+// CountRelationships returns the total number of relationships in the database.
+func (m *RelationalDB) CountRelationships(_ context.Context) (int, error) {
+	return 0, m.Err
+}
+
 // Version methods - no-op implementations.
 
 // SaveVersion saves a new fact version.
