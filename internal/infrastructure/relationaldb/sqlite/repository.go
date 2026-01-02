@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ersonp/lore-core/internal/domain/entities"
@@ -192,28 +193,28 @@ func (r *Repository) FindEntityByName(ctx context.Context, worldID, name string)
 }
 
 // FindOrCreateEntity finds an entity by name or creates it if not found.
+// This method is atomic - it uses INSERT OR IGNORE followed by SELECT to avoid race conditions.
 func (r *Repository) FindOrCreateEntity(ctx context.Context, worldID, name string) (*entities.Entity, error) {
-	// Try to find existing entity
-	existing, err := r.FindEntityByName(ctx, worldID, name)
+	normalizedName := entities.NormalizeName(name)
+
+	// Atomically insert if not exists (ON CONFLICT DO NOTHING)
+	insertQuery := `
+		INSERT OR IGNORE INTO entities (id, world_id, name, normalized_name, created_at)
+		VALUES (?, ?, ?, ?, ?)
+	`
+	_, err := r.db.ExecContext(ctx, insertQuery,
+		generateUUID(),
+		worldID,
+		name,
+		normalizedName,
+		timeNow(),
+	)
 	if err != nil {
-		return nil, err
-	}
-	if existing != nil {
-		return existing, nil
+		return nil, fmt.Errorf("inserting entity: %w", err)
 	}
 
-	// Create new entity
-	entity := &entities.Entity{
-		ID:             generateUUID(),
-		WorldID:        worldID,
-		Name:           name,
-		NormalizedName: entities.NormalizeName(name),
-		CreatedAt:      timeNow(),
-	}
-	if err := r.SaveEntity(ctx, entity); err != nil {
-		return nil, err
-	}
-	return entity, nil
+	// Always fetch the entity (either newly inserted or pre-existing)
+	return r.FindEntityByName(ctx, worldID, name)
 }
 
 // FindEntityByID finds an entity by its ID.
@@ -240,6 +241,49 @@ func (r *Repository) FindEntityByID(ctx context.Context, entityID string) (*enti
 		return nil, fmt.Errorf("scanning entity: %w", err)
 	}
 	return &entity, nil
+}
+
+// FindEntitiesByIDs finds multiple entities by their IDs in a single query.
+func (r *Repository) FindEntitiesByIDs(ctx context.Context, ids []string) ([]*entities.Entity, error) {
+	if len(ids) == 0 {
+		return []*entities.Entity{}, nil
+	}
+
+	// Build placeholders for IN clause
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		SELECT id, world_id, name, normalized_name, created_at
+		FROM entities
+		WHERE id IN (%s)
+	`, strings.Join(placeholders, ","))
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying entities: %w", err)
+	}
+	defer rows.Close()
+
+	result := make([]*entities.Entity, 0, len(ids))
+	for rows.Next() {
+		var entity entities.Entity
+		if err := rows.Scan(
+			&entity.ID,
+			&entity.WorldID,
+			&entity.Name,
+			&entity.NormalizedName,
+			&entity.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scanning entity: %w", err)
+		}
+		result = append(result, &entity)
+	}
+	return result, rows.Err()
 }
 
 // ListEntities lists all entities for a world with pagination.

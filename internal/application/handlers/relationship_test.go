@@ -53,7 +53,7 @@ func (m *relHandlerVectorDB) ExistsByIDs(_ context.Context, ids []string) (map[s
 }
 
 func (m *relHandlerVectorDB) FindByIDs(_ context.Context, ids []string) ([]entities.Fact, error) {
-	var result []entities.Fact
+	result := make([]entities.Fact, 0, len(ids))
 	for _, id := range ids {
 		if f, ok := m.facts[id]; ok {
 			result = append(result, f)
@@ -140,6 +140,16 @@ func (m *relHandlerRelationalDB) FindOrCreateEntity(_ context.Context, worldID, 
 
 func (m *relHandlerRelationalDB) FindEntityByID(_ context.Context, entityID string) (*entities.Entity, error) {
 	return m.entities[entityID], nil
+}
+
+func (m *relHandlerRelationalDB) FindEntitiesByIDs(_ context.Context, ids []string) ([]*entities.Entity, error) {
+	result := make([]*entities.Entity, 0, len(ids))
+	for _, id := range ids {
+		if e, ok := m.entities[id]; ok {
+			result = append(result, e)
+		}
+	}
+	return result, nil
 }
 
 func (m *relHandlerRelationalDB) ListEntities(_ context.Context, _ string, _, _ int) ([]*entities.Entity, error) {

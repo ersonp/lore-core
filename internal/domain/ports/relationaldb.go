@@ -30,6 +30,9 @@ type RelationalDB interface {
 	// FindEntityByID finds an entity by its ID.
 	FindEntityByID(ctx context.Context, entityID string) (*entities.Entity, error)
 
+	// FindEntitiesByIDs finds multiple entities by their IDs in a single query.
+	FindEntitiesByIDs(ctx context.Context, ids []string) ([]*entities.Entity, error)
+
 	// ListEntities lists all entities for a world with pagination.
 	ListEntities(ctx context.Context, worldID string, limit, offset int) ([]*entities.Entity, error)
 

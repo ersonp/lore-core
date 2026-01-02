@@ -45,7 +45,8 @@ type RelationshipInfo struct {
 
 // ListResult contains the result of listing relationships.
 type ListResult struct {
-	Relationships []RelationshipInfo `json:"relationships"`
+	Relationships   []RelationshipInfo `json:"relationships"`
+	RelatedEntities []string           `json:"related_entities,omitempty"`
 }
 
 // HandleCreate creates a new relationship between two entities.
@@ -73,48 +74,115 @@ func (h *RelationshipHandler) HandleDelete(ctx context.Context, id string) error
 
 // HandleList returns relationships for an entity with optional filtering.
 func (h *RelationshipHandler) HandleList(ctx context.Context, worldID, entityName string, opts ListOptions) (*ListResult, error) {
-	// Get relationships by entity name
-	relationships, err := h.service.ListByName(ctx, worldID, entityName)
+	// Find the entity first to get its ID
+	entity, err := h.relationalDB.FindEntityByName(ctx, worldID, entityName)
+	if err != nil {
+		return nil, fmt.Errorf("finding entity: %w", err)
+	}
+	if entity == nil {
+		return &ListResult{Relationships: []RelationshipInfo{}}, nil
+	}
+
+	// Get relationships
+	relationships, err := h.service.List(ctx, entity.ID)
 	if err != nil {
 		return nil, fmt.Errorf("listing relationships: %w", err)
 	}
 
+	// Get related entities if depth > 1
+	relatedEntityNames, err := h.fetchRelatedEntityNames(ctx, entity.ID, opts.Depth)
+	if err != nil {
+		return nil, err
+	}
+
 	// Filter by type if specified
-	if opts.Type != "" {
-		filtered := make([]entities.Relationship, 0, len(relationships))
-		for i := range relationships {
-			if string(relationships[i].Type) == opts.Type {
-				filtered = append(filtered, relationships[i])
-			}
-		}
-		relationships = filtered
+	relationships = filterByType(relationships, opts.Type)
+
+	// Build entity lookup map for relationship info
+	entityMap, err := h.buildEntityMap(ctx, relationships)
+	if err != nil {
+		return nil, err
 	}
 
 	// Build result with entity details
-	result := &ListResult{
-		Relationships: make([]RelationshipInfo, 0, len(relationships)),
+	return h.buildListResult(relationships, entityMap, relatedEntityNames), nil
+}
+
+// fetchRelatedEntityNames fetches names of entities connected at the given depth.
+func (h *RelationshipHandler) fetchRelatedEntityNames(ctx context.Context, entityID string, depth int) ([]string, error) {
+	if depth <= 1 {
+		return nil, nil
 	}
 
-	// Collect unique entity IDs to fetch
-	entityIDs := make(map[string]bool)
-	for i := range relationships {
-		entityIDs[relationships[i].SourceEntityID] = true
-		entityIDs[relationships[i].TargetEntityID] = true
+	relatedEntities, err := h.service.ListWithDepth(ctx, entityID, depth)
+	if err != nil {
+		return nil, fmt.Errorf("listing related entities: %w", err)
 	}
 
-	// Fetch entities
-	entityMap := make(map[string]*entities.Entity, len(entityIDs))
-	for id := range entityIDs {
-		entity, err := h.relationalDB.FindEntityByID(ctx, id)
+	names := make([]string, 0, len(relatedEntities))
+	for _, re := range relatedEntities {
+		e, err := h.relationalDB.FindEntityByID(ctx, re.EntityID)
 		if err != nil {
-			return nil, fmt.Errorf("fetching entity %s: %w", id, err)
+			return nil, fmt.Errorf("fetching entity %s: %w", re.EntityID, err)
 		}
-		if entity != nil {
-			entityMap[id] = entity
+		if e != nil {
+			names = append(names, e.Name)
 		}
 	}
+	return names, nil
+}
 
-	// Build relationship info
+// filterByType filters relationships by type, returning all if typeFilter is empty.
+func filterByType(relationships []entities.Relationship, typeFilter string) []entities.Relationship {
+	if typeFilter == "" {
+		return relationships
+	}
+
+	filtered := make([]entities.Relationship, 0, len(relationships))
+	for i := range relationships {
+		if string(relationships[i].Type) == typeFilter {
+			filtered = append(filtered, relationships[i])
+		}
+	}
+	return filtered
+}
+
+// buildEntityMap fetches all entities referenced in relationships and builds a lookup map.
+func (h *RelationshipHandler) buildEntityMap(ctx context.Context, relationships []entities.Relationship) (map[string]*entities.Entity, error) {
+	// Collect unique entity IDs
+	entityIDSet := make(map[string]bool)
+	for i := range relationships {
+		entityIDSet[relationships[i].SourceEntityID] = true
+		entityIDSet[relationships[i].TargetEntityID] = true
+	}
+
+	// Convert to slice for batch fetch
+	entityIDs := make([]string, 0, len(entityIDSet))
+	for id := range entityIDSet {
+		entityIDs = append(entityIDs, id)
+	}
+
+	// Fetch entities in single query
+	fetchedEntities, err := h.relationalDB.FindEntitiesByIDs(ctx, entityIDs)
+	if err != nil {
+		return nil, fmt.Errorf("fetching entities: %w", err)
+	}
+
+	// Build map for quick lookup
+	entityMap := make(map[string]*entities.Entity, len(fetchedEntities))
+	for _, entity := range fetchedEntities {
+		entityMap[entity.ID] = entity
+	}
+	return entityMap, nil
+}
+
+// buildListResult constructs the final ListResult from relationships and entity data.
+func (h *RelationshipHandler) buildListResult(relationships []entities.Relationship, entityMap map[string]*entities.Entity, relatedEntityNames []string) *ListResult {
+	result := &ListResult{
+		Relationships:   make([]RelationshipInfo, 0, len(relationships)),
+		RelatedEntities: relatedEntityNames,
+	}
+
 	for i := range relationships {
 		info := RelationshipInfo{
 			Relationship: relationships[i],
@@ -123,8 +191,7 @@ func (h *RelationshipHandler) HandleList(ctx context.Context, worldID, entityNam
 		}
 		result.Relationships = append(result.Relationships, info)
 	}
-
-	return result, nil
+	return result
 }
 
 // HandleFindBetween finds a direct relationship between two entities.
@@ -137,30 +204,24 @@ func (h *RelationshipHandler) HandleCount(ctx context.Context) (int, error) {
 	return h.service.Count(ctx)
 }
 
+// relationTypeMap provides O(1) lookup for relationship type validation.
+var relationTypeMap = map[string]entities.RelationType{
+	"parent":     entities.RelationParent,
+	"child":      entities.RelationChild,
+	"sibling":    entities.RelationSibling,
+	"spouse":     entities.RelationSpouse,
+	"ally":       entities.RelationAlly,
+	"enemy":      entities.RelationEnemy,
+	"located_in": entities.RelationLocatedIn,
+	"owns":       entities.RelationOwns,
+	"member_of":  entities.RelationMemberOf,
+	"created":    entities.RelationCreated,
+}
+
 // parseRelationType validates and converts a string to RelationType.
 func parseRelationType(s string) (entities.RelationType, error) {
-	switch s {
-	case "parent":
-		return entities.RelationParent, nil
-	case "child":
-		return entities.RelationChild, nil
-	case "sibling":
-		return entities.RelationSibling, nil
-	case "spouse":
-		return entities.RelationSpouse, nil
-	case "ally":
-		return entities.RelationAlly, nil
-	case "enemy":
-		return entities.RelationEnemy, nil
-	case "located_in":
-		return entities.RelationLocatedIn, nil
-	case "owns":
-		return entities.RelationOwns, nil
-	case "member_of":
-		return entities.RelationMemberOf, nil
-	case "created":
-		return entities.RelationCreated, nil
-	default:
-		return "", fmt.Errorf("invalid relationship type: %s (valid: parent, child, sibling, spouse, ally, enemy, located_in, owns, member_of, created)", s)
+	if rt, ok := relationTypeMap[s]; ok {
+		return rt, nil
 	}
+	return "", fmt.Errorf("invalid relationship type: %s (valid: parent, child, sibling, spouse, ally, enemy, located_in, owns, member_of, created)", s)
 }

@@ -58,7 +58,7 @@ func (m *relTestVectorDB) ExistsByIDs(_ context.Context, ids []string) (map[stri
 }
 
 func (m *relTestVectorDB) FindByIDs(_ context.Context, ids []string) ([]entities.Fact, error) {
-	var result []entities.Fact
+	result := make([]entities.Fact, 0, len(ids))
 	for _, id := range ids {
 		if f, ok := m.facts[id]; ok {
 			result = append(result, f)
@@ -165,6 +165,19 @@ func (m *relTestRelationalDB) FindEntityByID(_ context.Context, entityID string)
 		return nil, m.findErr
 	}
 	return m.entities[entityID], nil
+}
+
+func (m *relTestRelationalDB) FindEntitiesByIDs(_ context.Context, ids []string) ([]*entities.Entity, error) {
+	if m.findErr != nil {
+		return nil, m.findErr
+	}
+	result := make([]*entities.Entity, 0, len(ids))
+	for _, id := range ids {
+		if e, ok := m.entities[id]; ok {
+			result = append(result, e)
+		}
+	}
+	return result, nil
 }
 
 func (m *relTestRelationalDB) ListEntities(_ context.Context, _ string, _, _ int) ([]*entities.Entity, error) {

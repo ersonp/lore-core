@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/ersonp/lore-core/internal/domain/entities"
@@ -86,7 +87,9 @@ func (s *RelationshipService) Create(
 	// Create a fact for semantic search
 	if err := s.createRelationshipFact(ctx, rel, sourceEntity.Name, targetEntity.Name); err != nil {
 		// Rollback SQLite save
-		_ = s.relationalDB.DeleteRelationship(ctx, rel.ID)
+		if rollbackErr := s.relationalDB.DeleteRelationship(ctx, rel.ID); rollbackErr != nil {
+			log.Printf("warning: failed to rollback relationship %s: %v", rel.ID, rollbackErr)
+		}
 		return nil, fmt.Errorf("creating relationship fact: %w", err)
 	}
 

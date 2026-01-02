@@ -59,7 +59,7 @@ func (m *relTestVectorDB) ExistsByIDs(_ context.Context, ids []string) (map[stri
 }
 
 func (m *relTestVectorDB) FindByIDs(_ context.Context, ids []string) ([]entities.Fact, error) {
-	var result []entities.Fact
+	result := make([]entities.Fact, 0, len(ids))
 	for _, id := range ids {
 		if f, ok := m.facts[id]; ok {
 			result = append(result, f)

@@ -87,6 +87,20 @@ func (m *RelationalDB) FindEntityByID(_ context.Context, entityID string) (*enti
 	return m.Entities[entityID], nil
 }
 
+// FindEntitiesByIDs finds multiple entities by their IDs.
+func (m *RelationalDB) FindEntitiesByIDs(_ context.Context, ids []string) ([]*entities.Entity, error) {
+	if m.Err != nil {
+		return nil, m.Err
+	}
+	result := make([]*entities.Entity, 0, len(ids))
+	for _, id := range ids {
+		if e, ok := m.Entities[id]; ok {
+			result = append(result, e)
+		}
+	}
+	return result, nil
+}
+
 // ListEntities lists all entities for a world with pagination.
 func (m *RelationalDB) ListEntities(_ context.Context, worldID string, limit, offset int) ([]*entities.Entity, error) {
 	if m.Err != nil {

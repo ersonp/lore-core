@@ -61,7 +61,11 @@ func runEntities(cmd *cobra.Command, searchQuery string, limit int) error {
 		fmt.Println()
 
 		for _, entity := range result.Entities {
-			fmt.Printf("  %-40s %s\n", entity.ID[:8]+"...", entity.Name)
+			idDisplay := entity.ID
+			if len(entity.ID) > 8 {
+				idDisplay = entity.ID[:8] + "..."
+			}
+			fmt.Printf("  %-40s %s\n", idDisplay, entity.Name)
 		}
 
 		return nil

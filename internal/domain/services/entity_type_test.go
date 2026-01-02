@@ -99,6 +99,16 @@ func (m *mockRelationalDB) FindEntityByID(_ context.Context, entityID string) (*
 	return m.entities[entityID], nil
 }
 
+func (m *mockRelationalDB) FindEntitiesByIDs(_ context.Context, ids []string) ([]*entities.Entity, error) {
+	result := make([]*entities.Entity, 0, len(ids))
+	for _, id := range ids {
+		if e, ok := m.entities[id]; ok {
+			result = append(result, e)
+		}
+	}
+	return result, nil
+}
+
 func (m *mockRelationalDB) ListEntities(_ context.Context, _ string, _, _ int) ([]*entities.Entity, error) {
 	return nil, nil
 }
