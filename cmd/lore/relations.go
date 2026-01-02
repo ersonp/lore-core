@@ -22,10 +22,15 @@ func newRelationsCmd() *cobra.Command {
 	var flags relationsFlags
 
 	cmd := &cobra.Command{
-		Use:   "relations <fact-id>",
-		Short: "List relationships for a fact",
-		Long:  "Shows all relationships connected to a fact, with optional depth traversal.",
-		Args:  cobra.ExactArgs(1),
+		Use:   "relations <entity-name>",
+		Short: "List relationships for an entity",
+		Long: `Shows all relationships connected to an entity, with optional filtering.
+
+Examples:
+  lore relations Alice
+  lore relations Alice --type ally
+  lore relations "Northern Kingdom" --format json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRelations(cmd, args, flags)
 		},
@@ -40,7 +45,7 @@ func newRelationsCmd() *cobra.Command {
 
 func runRelations(cmd *cobra.Command, args []string, flags relationsFlags) error {
 	ctx := cmd.Context()
-	factID := args[0]
+	entityName := args[0]
 
 	// Validate depth
 	if flags.depth < 1 || flags.depth > 5 {
@@ -59,30 +64,30 @@ func runRelations(cmd *cobra.Command, args []string, flags relationsFlags) error
 			Depth: flags.depth,
 		}
 
-		result, err := handler.HandleList(ctx, factID, opts)
+		result, err := handler.HandleList(ctx, globalWorld, entityName, opts)
 		if err != nil {
 			return fmt.Errorf("listing relationships: %w", err)
 		}
 
 		if len(result.Relationships) == 0 {
-			fmt.Printf("No relationships found for fact: %s\n", factID)
+			fmt.Printf("No relationships found for entity: %s\n", entityName)
 			return nil
 		}
 
-		return printRelations(factID, result, flags.format)
+		return printRelations(entityName, result, flags.format)
 	})
 }
 
-func printRelations(factID string, result *handlers.ListResult, format string) error {
+func printRelations(entityName string, result *handlers.ListResult, format string) error {
 	switch format {
 	case "json":
 		return printRelationsJSON(result)
 	case "list":
-		return printRelationsList(factID, result)
+		return printRelationsList(entityName, result)
 	case "tree":
-		return printRelationsTree(factID, result)
+		return printRelationsTree(entityName, result)
 	default:
-		return printRelationsTree(factID, result)
+		return printRelationsTree(entityName, result)
 	}
 }
 
@@ -95,64 +100,52 @@ func printRelationsJSON(result *handlers.ListResult) error {
 	return nil
 }
 
-func printRelationsList(factID string, result *handlers.ListResult) error {
-	fmt.Printf("Relationships for %s:\n", factID)
+func printRelationsList(entityName string, result *handlers.ListResult) error {
+	fmt.Printf("Relationships for %s:\n", entityName)
 	fmt.Println(strings.Repeat("-", 60))
 
 	for _, info := range result.Relationships {
 		rel := info.Relationship
-		sourceName := getFactName(info.SourceFact)
-		targetName := getFactName(info.TargetFact)
+		sourceName := getEntityName(info.SourceEntity)
+		targetName := getEntityName(info.TargetEntity)
 
 		direction := "->"
 		if rel.Bidirectional {
 			direction = "<->"
 		}
 
-		fmt.Printf("%s (%s) %s [%s] %s %s (%s)\n",
-			rel.SourceFactID, sourceName,
+		fmt.Printf("%s %s [%s] %s %s\n",
+			sourceName,
 			direction,
 			rel.Type,
 			direction,
-			rel.TargetFactID, targetName,
+			targetName,
 		)
 	}
 	return nil
 }
 
-func printRelationsTree(factID string, result *handlers.ListResult) error {
-	// Find the root fact name
-	rootName := factID
-	for _, info := range result.Relationships {
-		if info.SourceFact != nil && info.SourceFact.ID == factID {
-			rootName = getFactName(info.SourceFact)
-			break
-		}
-		if info.TargetFact != nil && info.TargetFact.ID == factID {
-			rootName = getFactName(info.TargetFact)
-			break
-		}
-	}
-
-	fmt.Printf("%s (%s)\n", factID, rootName)
+func printRelationsTree(entityName string, result *handlers.ListResult) error {
+	fmt.Printf("%s\n", entityName)
 
 	for i, info := range result.Relationships {
 		rel := info.Relationship
 		isLast := i == len(result.Relationships)-1
 
-		prefix := "├──"
+		prefix := "+-"
 		if isLast {
-			prefix = "└──"
+			prefix = "\\-"
 		}
 
-		// Determine the "other" fact (not the root)
-		var otherID, otherName string
-		if rel.SourceFactID == factID {
-			otherID = rel.TargetFactID
-			otherName = getFactName(info.TargetFact)
+		// Determine the "other" entity (not the root)
+		var otherName string
+		sourceName := getEntityName(info.SourceEntity)
+		targetName := getEntityName(info.TargetEntity)
+
+		if strings.EqualFold(sourceName, entityName) {
+			otherName = targetName
 		} else {
-			otherID = rel.SourceFactID
-			otherName = getFactName(info.SourceFact)
+			otherName = sourceName
 		}
 
 		dirIndicator := ""
@@ -160,18 +153,15 @@ func printRelationsTree(factID string, result *handlers.ListResult) error {
 			dirIndicator = " <->"
 		}
 
-		fmt.Printf("%s %s%s → %s (%s)\n", prefix, rel.Type, dirIndicator, otherID, otherName)
+		fmt.Printf("%s %s%s -> %s\n", prefix, rel.Type, dirIndicator, otherName)
 	}
 
 	return nil
 }
 
-func getFactName(fact *entities.Fact) string {
-	if fact == nil {
+func getEntityName(entity *entities.Entity) string {
+	if entity == nil {
 		return "unknown"
 	}
-	if fact.Subject != "" {
-		return fact.Subject
-	}
-	return fact.ID
+	return entity.Name
 }

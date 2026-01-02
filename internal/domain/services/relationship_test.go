@@ -3,7 +3,9 @@ package services
 import (
 	"context"
 	"errors"
+	"sort"
 	"testing"
+	"time"
 
 	"github.com/ersonp/lore-core/internal/domain/entities"
 	"github.com/stretchr/testify/assert"
@@ -96,6 +98,7 @@ func (m *relTestVectorDB) Count(_ context.Context) (uint64, error)          { re
 
 // relTestRelationalDB is a test mock for RelationalDB with relationship support.
 type relTestRelationalDB struct {
+	entities      map[string]*entities.Entity
 	relationships map[string]*entities.Relationship
 	saveErr       error
 	deleteErr     error
@@ -103,11 +106,88 @@ type relTestRelationalDB struct {
 }
 
 func newRelTestRelationalDB() *relTestRelationalDB {
-	return &relTestRelationalDB{relationships: make(map[string]*entities.Relationship)}
+	return &relTestRelationalDB{
+		entities:      make(map[string]*entities.Entity),
+		relationships: make(map[string]*entities.Relationship),
+	}
 }
 
 func (m *relTestRelationalDB) EnsureSchema(_ context.Context) error { return nil }
 func (m *relTestRelationalDB) Close() error                         { return nil }
+
+// Entity methods.
+
+func (m *relTestRelationalDB) SaveEntity(_ context.Context, entity *entities.Entity) error {
+	if m.saveErr != nil {
+		return m.saveErr
+	}
+	m.entities[entity.ID] = entity
+	return nil
+}
+
+func (m *relTestRelationalDB) FindEntityByName(_ context.Context, worldID, name string) (*entities.Entity, error) {
+	if m.findErr != nil {
+		return nil, m.findErr
+	}
+	normalizedName := entities.NormalizeName(name)
+	for _, e := range m.entities {
+		if e.WorldID == worldID && e.NormalizedName == normalizedName {
+			return e, nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *relTestRelationalDB) FindOrCreateEntity(_ context.Context, worldID, name string) (*entities.Entity, error) {
+	if m.findErr != nil {
+		return nil, m.findErr
+	}
+	normalizedName := entities.NormalizeName(name)
+	for _, e := range m.entities {
+		if e.WorldID == worldID && e.NormalizedName == normalizedName {
+			return e, nil
+		}
+	}
+	// Create new entity
+	entity := &entities.Entity{
+		ID:             "entity-" + normalizedName,
+		WorldID:        worldID,
+		Name:           name,
+		NormalizedName: normalizedName,
+		CreatedAt:      time.Now(),
+	}
+	m.entities[entity.ID] = entity
+	return entity, nil
+}
+
+func (m *relTestRelationalDB) FindEntityByID(_ context.Context, entityID string) (*entities.Entity, error) {
+	if m.findErr != nil {
+		return nil, m.findErr
+	}
+	return m.entities[entityID], nil
+}
+
+func (m *relTestRelationalDB) ListEntities(_ context.Context, _ string, _, _ int) ([]*entities.Entity, error) {
+	return nil, nil
+}
+
+func (m *relTestRelationalDB) SearchEntities(_ context.Context, _, _ string, _ int) ([]*entities.Entity, error) {
+	return nil, nil
+}
+
+func (m *relTestRelationalDB) DeleteEntity(_ context.Context, entityID string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	delete(m.entities, entityID)
+	return nil
+}
+
+func (m *relTestRelationalDB) CountEntities(_ context.Context, _ string) (int, error) {
+	return len(m.entities), nil
+}
+
+// Relationship methods.
 
 func (m *relTestRelationalDB) SaveRelationship(_ context.Context, rel *entities.Relationship) error {
 	if m.saveErr != nil {
@@ -117,16 +197,20 @@ func (m *relTestRelationalDB) SaveRelationship(_ context.Context, rel *entities.
 	return nil
 }
 
-func (m *relTestRelationalDB) FindRelationshipsByFact(_ context.Context, factID string) ([]entities.Relationship, error) {
+func (m *relTestRelationalDB) FindRelationshipsByEntity(_ context.Context, entityID string) ([]entities.Relationship, error) {
 	if m.findErr != nil {
 		return nil, m.findErr
 	}
 	var result []entities.Relationship
 	for _, rel := range m.relationships {
-		if rel.SourceFactID == factID || (rel.TargetFactID == factID && rel.Bidirectional) {
+		if rel.SourceEntityID == entityID || (rel.TargetEntityID == entityID && rel.Bidirectional) {
 			result = append(result, *rel)
 		}
 	}
+	// Sort for deterministic test results
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ID < result[j].ID
+	})
 	return result, nil
 }
 
@@ -142,7 +226,7 @@ func (m *relTestRelationalDB) DeleteRelationship(_ context.Context, id string) e
 	return nil
 }
 
-func (m *relTestRelationalDB) DeleteRelationshipsByFact(_ context.Context, _ string) error {
+func (m *relTestRelationalDB) DeleteRelationshipsByEntity(_ context.Context, _ string) error {
 	return nil
 }
 
@@ -151,17 +235,17 @@ func (m *relTestRelationalDB) FindRelationshipBetween(_ context.Context, sourceI
 		return nil, m.findErr
 	}
 	for _, rel := range m.relationships {
-		if rel.SourceFactID == sourceID && rel.TargetFactID == targetID {
+		if rel.SourceEntityID == sourceID && rel.TargetEntityID == targetID {
 			return rel, nil
 		}
-		if rel.Bidirectional && rel.SourceFactID == targetID && rel.TargetFactID == sourceID {
+		if rel.Bidirectional && rel.SourceEntityID == targetID && rel.TargetEntityID == sourceID {
 			return rel, nil
 		}
 	}
 	return nil, nil
 }
 
-func (m *relTestRelationalDB) FindRelatedFacts(_ context.Context, factID string, depth int) ([]string, error) {
+func (m *relTestRelationalDB) FindRelatedEntities(_ context.Context, entityID string, depth int) ([]string, error) {
 	if m.findErr != nil {
 		return nil, m.findErr
 	}
@@ -171,11 +255,11 @@ func (m *relTestRelationalDB) FindRelatedFacts(_ context.Context, factID string,
 	// Simple implementation: return direct connections only
 	seen := make(map[string]bool)
 	for _, rel := range m.relationships {
-		if rel.SourceFactID == factID && rel.TargetFactID != factID {
-			seen[rel.TargetFactID] = true
+		if rel.SourceEntityID == entityID && rel.TargetEntityID != entityID {
+			seen[rel.TargetEntityID] = true
 		}
-		if rel.Bidirectional && rel.TargetFactID == factID && rel.SourceFactID != factID {
-			seen[rel.SourceFactID] = true
+		if rel.Bidirectional && rel.TargetEntityID == entityID && rel.SourceEntityID != entityID {
+			seen[rel.SourceEntityID] = true
 		}
 	}
 	result := make([]string, 0, len(seen))
@@ -254,24 +338,25 @@ func setupRelationshipTest() (*RelationshipService, *relTestVectorDB, *relTestRe
 	return svc, vectorDB, relationalDB, embedder
 }
 
+const testWorldID = "test-world"
+
 func TestRelationshipService_Create(t *testing.T) {
 	t.Run("successful creation", func(t *testing.T) {
 		svc, vectorDB, relationalDB, _ := setupRelationshipTest()
 		ctx := context.Background()
 
-		// Add facts to vectorDB
-		vectorDB.facts["fact-1"] = entities.Fact{ID: "fact-1", Subject: "Alice"}
-		vectorDB.facts["fact-2"] = entities.Fact{ID: "fact-2", Subject: "Bob"}
-
-		rel, err := svc.Create(ctx, "fact-1", entities.RelationAlly, "fact-2", true)
+		rel, err := svc.Create(ctx, testWorldID, "Alice", entities.RelationAlly, "Bob", true)
 		require.NoError(t, err)
 		require.NotNil(t, rel)
 
 		assert.NotEmpty(t, rel.ID)
-		assert.Equal(t, "fact-1", rel.SourceFactID)
-		assert.Equal(t, "fact-2", rel.TargetFactID)
+		assert.NotEmpty(t, rel.SourceEntityID)
+		assert.NotEmpty(t, rel.TargetEntityID)
 		assert.Equal(t, entities.RelationAlly, rel.Type)
 		assert.True(t, rel.Bidirectional)
+
+		// Verify entities were created
+		assert.Len(t, relationalDB.entities, 2)
 
 		// Verify saved to relationalDB
 		assert.Len(t, relationalDB.relationships, 1)
@@ -281,63 +366,70 @@ func TestRelationshipService_Create(t *testing.T) {
 		assert.True(t, exists)
 	})
 
-	t.Run("source fact not found", func(t *testing.T) {
-		svc, vectorDB, _, _ := setupRelationshipTest()
-		ctx := context.Background()
-
-		vectorDB.facts["fact-2"] = entities.Fact{ID: "fact-2", Subject: "Bob"}
-
-		_, err := svc.Create(ctx, "fact-1", entities.RelationAlly, "fact-2", false)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "source fact not found")
-	})
-
-	t.Run("target fact not found", func(t *testing.T) {
-		svc, vectorDB, _, _ := setupRelationshipTest()
-		ctx := context.Background()
-
-		vectorDB.facts["fact-1"] = entities.Fact{ID: "fact-1", Subject: "Alice"}
-
-		_, err := svc.Create(ctx, "fact-1", entities.RelationAlly, "fact-2", false)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "target fact not found")
-	})
-
 	t.Run("duplicate relationship", func(t *testing.T) {
-		svc, vectorDB, relationalDB, _ := setupRelationshipTest()
+		svc, _, relationalDB, _ := setupRelationshipTest()
 		ctx := context.Background()
 
-		vectorDB.facts["fact-1"] = entities.Fact{ID: "fact-1", Subject: "Alice"}
-		vectorDB.facts["fact-2"] = entities.Fact{ID: "fact-2", Subject: "Bob"}
-
-		// Pre-add relationship
+		// Pre-add entities and relationship
+		relationalDB.entities["entity-alice"] = &entities.Entity{
+			ID:             "entity-alice",
+			WorldID:        testWorldID,
+			Name:           "Alice",
+			NormalizedName: "alice",
+		}
+		relationalDB.entities["entity-bob"] = &entities.Entity{
+			ID:             "entity-bob",
+			WorldID:        testWorldID,
+			Name:           "Bob",
+			NormalizedName: "bob",
+		}
 		relationalDB.relationships["existing"] = &entities.Relationship{
-			ID:           "existing",
-			SourceFactID: "fact-1",
-			TargetFactID: "fact-2",
-			Type:         entities.RelationAlly,
+			ID:             "existing",
+			SourceEntityID: "entity-alice",
+			TargetEntityID: "entity-bob",
+			Type:           entities.RelationAlly,
 		}
 
-		_, err := svc.Create(ctx, "fact-1", entities.RelationAlly, "fact-2", false)
+		_, err := svc.Create(ctx, testWorldID, "Alice", entities.RelationAlly, "Bob", false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "relationship already exists")
 	})
 
 	t.Run("embedding error rolls back", func(t *testing.T) {
-		svc, vectorDB, relationalDB, embedder := setupRelationshipTest()
+		svc, _, relationalDB, embedder := setupRelationshipTest()
 		ctx := context.Background()
 
-		vectorDB.facts["fact-1"] = entities.Fact{ID: "fact-1", Subject: "Alice"}
-		vectorDB.facts["fact-2"] = entities.Fact{ID: "fact-2", Subject: "Bob"}
 		embedder.err = errors.New("embedding failed")
 
-		_, err := svc.Create(ctx, "fact-1", entities.RelationAlly, "fact-2", false)
+		_, err := svc.Create(ctx, testWorldID, "Alice", entities.RelationAlly, "Bob", false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "embedding")
 
 		// Relationship should be rolled back
 		assert.Len(t, relationalDB.relationships, 0)
 	})
+}
+
+func TestRelationshipService_Create_EntityReuse(t *testing.T) {
+	svc, _, relationalDB, _ := setupRelationshipTest()
+	ctx := context.Background()
+
+	// Pre-add Alice entity
+	relationalDB.entities["entity-alice"] = &entities.Entity{
+		ID:             "entity-alice",
+		WorldID:        testWorldID,
+		Name:           "Alice",
+		NormalizedName: "alice",
+	}
+
+	rel, err := svc.Create(ctx, testWorldID, "Alice", entities.RelationAlly, "Bob", true)
+	require.NoError(t, err)
+
+	// Should reuse Alice entity
+	assert.Equal(t, "entity-alice", rel.SourceEntityID)
+
+	// Bob should be created
+	assert.Len(t, relationalDB.entities, 2)
 }
 
 func TestRelationshipService_Delete(t *testing.T) {
@@ -370,25 +462,25 @@ func TestRelationshipService_Delete(t *testing.T) {
 }
 
 func TestRelationshipService_List(t *testing.T) {
-	t.Run("returns relationships for fact", func(t *testing.T) {
+	t.Run("returns relationships for entity", func(t *testing.T) {
 		svc, _, relationalDB, _ := setupRelationshipTest()
 		ctx := context.Background()
 
 		relationalDB.relationships["rel-1"] = &entities.Relationship{
-			ID:           "rel-1",
-			SourceFactID: "fact-1",
-			TargetFactID: "fact-2",
-			Type:         entities.RelationAlly,
+			ID:             "rel-1",
+			SourceEntityID: "entity-1",
+			TargetEntityID: "entity-2",
+			Type:           entities.RelationAlly,
 		}
 		relationalDB.relationships["rel-2"] = &entities.Relationship{
-			ID:            "rel-2",
-			SourceFactID:  "fact-3",
-			TargetFactID:  "fact-1",
-			Type:          entities.RelationSibling,
-			Bidirectional: true,
+			ID:             "rel-2",
+			SourceEntityID: "entity-3",
+			TargetEntityID: "entity-1",
+			Type:           entities.RelationSibling,
+			Bidirectional:  true,
 		}
 
-		rels, err := svc.List(ctx, "fact-1")
+		rels, err := svc.List(ctx, "entity-1")
 		require.NoError(t, err)
 		assert.Len(t, rels, 2)
 	})
@@ -397,7 +489,43 @@ func TestRelationshipService_List(t *testing.T) {
 		svc, _, _, _ := setupRelationshipTest()
 		ctx := context.Background()
 
-		rels, err := svc.List(ctx, "fact-1")
+		rels, err := svc.List(ctx, "entity-1")
+		require.NoError(t, err)
+		assert.Empty(t, rels)
+	})
+}
+
+func TestRelationshipService_ListByName(t *testing.T) {
+	t.Run("returns relationships for entity by name", func(t *testing.T) {
+		svc, _, relationalDB, _ := setupRelationshipTest()
+		ctx := context.Background()
+
+		// Add entity
+		relationalDB.entities["entity-alice"] = &entities.Entity{
+			ID:             "entity-alice",
+			WorldID:        testWorldID,
+			Name:           "Alice",
+			NormalizedName: "alice",
+		}
+
+		// Add relationship
+		relationalDB.relationships["rel-1"] = &entities.Relationship{
+			ID:             "rel-1",
+			SourceEntityID: "entity-alice",
+			TargetEntityID: "entity-bob",
+			Type:           entities.RelationAlly,
+		}
+
+		rels, err := svc.ListByName(ctx, testWorldID, "Alice")
+		require.NoError(t, err)
+		assert.Len(t, rels, 1)
+	})
+
+	t.Run("returns empty for nonexistent entity", func(t *testing.T) {
+		svc, _, _, _ := setupRelationshipTest()
+		ctx := context.Background()
+
+		rels, err := svc.ListByName(ctx, testWorldID, "Nonexistent")
 		require.NoError(t, err)
 		assert.Empty(t, rels)
 	})
@@ -408,9 +536,9 @@ func TestRelationshipService_ListWithDepth(t *testing.T) {
 		svc, _, _, _ := setupRelationshipTest()
 		ctx := context.Background()
 
-		facts, err := svc.ListWithDepth(ctx, "fact-1", 0)
+		entities, err := svc.ListWithDepth(ctx, "entity-1", 0)
 		require.NoError(t, err)
-		assert.Empty(t, facts)
+		assert.Empty(t, entities)
 	})
 
 	t.Run("depth 1 returns direct connections", func(t *testing.T) {
@@ -418,15 +546,15 @@ func TestRelationshipService_ListWithDepth(t *testing.T) {
 		ctx := context.Background()
 
 		relationalDB.relationships["rel-1"] = &entities.Relationship{
-			ID:           "rel-1",
-			SourceFactID: "fact-1",
-			TargetFactID: "fact-2",
+			ID:             "rel-1",
+			SourceEntityID: "entity-1",
+			TargetEntityID: "entity-2",
 		}
 
-		facts, err := svc.ListWithDepth(ctx, "fact-1", 1)
+		related, err := svc.ListWithDepth(ctx, "entity-1", 1)
 		require.NoError(t, err)
-		assert.Len(t, facts, 1)
-		assert.Equal(t, "fact-2", facts[0].FactID)
+		assert.Len(t, related, 1)
+		assert.Equal(t, "entity-2", related[0].EntityID)
 	})
 }
 
@@ -436,13 +564,13 @@ func TestRelationshipService_FindBetween(t *testing.T) {
 		ctx := context.Background()
 
 		relationalDB.relationships["rel-1"] = &entities.Relationship{
-			ID:           "rel-1",
-			SourceFactID: "fact-1",
-			TargetFactID: "fact-2",
-			Type:         entities.RelationAlly,
+			ID:             "rel-1",
+			SourceEntityID: "entity-1",
+			TargetEntityID: "entity-2",
+			Type:           entities.RelationAlly,
 		}
 
-		rel, err := svc.FindBetween(ctx, "fact-1", "fact-2")
+		rel, err := svc.FindBetween(ctx, "entity-1", "entity-2")
 		require.NoError(t, err)
 		require.NotNil(t, rel)
 		assert.Equal(t, "rel-1", rel.ID)
@@ -453,15 +581,15 @@ func TestRelationshipService_FindBetween(t *testing.T) {
 		ctx := context.Background()
 
 		relationalDB.relationships["rel-1"] = &entities.Relationship{
-			ID:            "rel-1",
-			SourceFactID:  "fact-1",
-			TargetFactID:  "fact-2",
-			Type:          entities.RelationSibling,
-			Bidirectional: true,
+			ID:             "rel-1",
+			SourceEntityID: "entity-1",
+			TargetEntityID: "entity-2",
+			Type:           entities.RelationSibling,
+			Bidirectional:  true,
 		}
 
 		// Find from reverse direction
-		rel, err := svc.FindBetween(ctx, "fact-2", "fact-1")
+		rel, err := svc.FindBetween(ctx, "entity-2", "entity-1")
 		require.NoError(t, err)
 		require.NotNil(t, rel)
 		assert.Equal(t, "rel-1", rel.ID)
@@ -471,7 +599,7 @@ func TestRelationshipService_FindBetween(t *testing.T) {
 		svc, _, _, _ := setupRelationshipTest()
 		ctx := context.Background()
 
-		rel, err := svc.FindBetween(ctx, "fact-1", "fact-2")
+		rel, err := svc.FindBetween(ctx, "entity-1", "entity-2")
 		require.NoError(t, err)
 		assert.Nil(t, rel)
 	})

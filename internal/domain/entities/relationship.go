@@ -18,12 +18,12 @@ const (
 	RelationCreated   RelationType = "created"
 )
 
-// Relationship represents a directed connection between two facts.
+// Relationship represents a directed connection between two entities.
 type Relationship struct {
-	ID            string       `json:"id"`
-	SourceFactID  string       `json:"source_fact_id"`
-	TargetFactID  string       `json:"target_fact_id"`
-	Type          RelationType `json:"type"`
-	Bidirectional bool         `json:"bidirectional"`
-	CreatedAt     time.Time    `json:"created_at"`
+	ID             string       `json:"id"`
+	SourceEntityID string       `json:"source_entity_id"`
+	TargetEntityID string       `json:"target_entity_id"`
+	Type           RelationType `json:"type"`
+	Bidirectional  bool         `json:"bidirectional"`
+	CreatedAt      time.Time    `json:"created_at"`
 }

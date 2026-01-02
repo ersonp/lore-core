@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"context"
-	"errors"
+	"sort"
 	"testing"
 	"time"
 
@@ -14,9 +14,7 @@ import (
 
 // relHandlerVectorDB is a test mock for VectorDB.
 type relHandlerVectorDB struct {
-	facts     map[string]entities.Fact
-	saveErr   error
-	deleteErr error
+	facts map[string]entities.Fact
 }
 
 func newRelHandlerVectorDB() *relHandlerVectorDB {
@@ -27,9 +25,6 @@ func (m *relHandlerVectorDB) EnsureCollection(_ context.Context, _ uint64) error
 func (m *relHandlerVectorDB) DeleteCollection(_ context.Context) error           { return nil }
 
 func (m *relHandlerVectorDB) Save(_ context.Context, fact *entities.Fact) error {
-	if m.saveErr != nil {
-		return m.saveErr
-	}
 	m.facts[fact.ID] = *fact
 	return nil
 }
@@ -45,7 +40,7 @@ func (m *relHandlerVectorDB) FindByID(_ context.Context, id string) (entities.Fa
 	if f, ok := m.facts[id]; ok {
 		return f, nil
 	}
-	return entities.Fact{}, errors.New("not found")
+	return entities.Fact{}, nil
 }
 
 func (m *relHandlerVectorDB) ExistsByIDs(_ context.Context, ids []string) (map[string]bool, error) {
@@ -75,9 +70,6 @@ func (m *relHandlerVectorDB) SearchByType(_ context.Context, _ []float32, _ enti
 }
 
 func (m *relHandlerVectorDB) Delete(_ context.Context, id string) error {
-	if m.deleteErr != nil {
-		return m.deleteErr
-	}
 	delete(m.facts, id)
 	return nil
 }
@@ -97,28 +89,94 @@ func (m *relHandlerVectorDB) Count(_ context.Context) (uint64, error)          {
 
 // relHandlerRelationalDB is a test mock for RelationalDB.
 type relHandlerRelationalDB struct {
+	entities      map[string]*entities.Entity
 	relationships map[string]*entities.Relationship
 }
 
 func newRelHandlerRelationalDB() *relHandlerRelationalDB {
-	return &relHandlerRelationalDB{relationships: make(map[string]*entities.Relationship)}
+	return &relHandlerRelationalDB{
+		entities:      make(map[string]*entities.Entity),
+		relationships: make(map[string]*entities.Relationship),
+	}
 }
 
 func (m *relHandlerRelationalDB) EnsureSchema(_ context.Context) error { return nil }
 func (m *relHandlerRelationalDB) Close() error                         { return nil }
+
+// Entity methods.
+
+func (m *relHandlerRelationalDB) SaveEntity(_ context.Context, entity *entities.Entity) error {
+	m.entities[entity.ID] = entity
+	return nil
+}
+
+func (m *relHandlerRelationalDB) FindEntityByName(_ context.Context, worldID, name string) (*entities.Entity, error) {
+	normalizedName := entities.NormalizeName(name)
+	for _, e := range m.entities {
+		if e.WorldID == worldID && e.NormalizedName == normalizedName {
+			return e, nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *relHandlerRelationalDB) FindOrCreateEntity(_ context.Context, worldID, name string) (*entities.Entity, error) {
+	normalizedName := entities.NormalizeName(name)
+	for _, e := range m.entities {
+		if e.WorldID == worldID && e.NormalizedName == normalizedName {
+			return e, nil
+		}
+	}
+	entity := &entities.Entity{
+		ID:             "entity-" + normalizedName,
+		WorldID:        worldID,
+		Name:           name,
+		NormalizedName: normalizedName,
+		CreatedAt:      time.Now(),
+	}
+	m.entities[entity.ID] = entity
+	return entity, nil
+}
+
+func (m *relHandlerRelationalDB) FindEntityByID(_ context.Context, entityID string) (*entities.Entity, error) {
+	return m.entities[entityID], nil
+}
+
+func (m *relHandlerRelationalDB) ListEntities(_ context.Context, _ string, _, _ int) ([]*entities.Entity, error) {
+	return nil, nil
+}
+
+func (m *relHandlerRelationalDB) SearchEntities(_ context.Context, _, _ string, _ int) ([]*entities.Entity, error) {
+	return nil, nil
+}
+
+func (m *relHandlerRelationalDB) DeleteEntity(_ context.Context, entityID string) error {
+	delete(m.entities, entityID)
+	return nil
+}
+
+func (m *relHandlerRelationalDB) CountEntities(_ context.Context, _ string) (int, error) {
+	return len(m.entities), nil
+}
+
+// Relationship methods.
 
 func (m *relHandlerRelationalDB) SaveRelationship(_ context.Context, rel *entities.Relationship) error {
 	m.relationships[rel.ID] = rel
 	return nil
 }
 
-func (m *relHandlerRelationalDB) FindRelationshipsByFact(_ context.Context, factID string) ([]entities.Relationship, error) {
+func (m *relHandlerRelationalDB) FindRelationshipsByEntity(_ context.Context, entityID string) ([]entities.Relationship, error) {
 	var result []entities.Relationship
 	for _, rel := range m.relationships {
-		if rel.SourceFactID == factID || (rel.TargetFactID == factID && rel.Bidirectional) {
+		if rel.SourceEntityID == entityID || (rel.TargetEntityID == entityID && rel.Bidirectional) {
 			result = append(result, *rel)
 		}
 	}
+	// Sort for deterministic test results
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ID < result[j].ID
+	})
 	return result, nil
 }
 
@@ -137,30 +195,30 @@ func (m *relHandlerRelationalDB) DeleteRelationship(_ context.Context, id string
 	return nil
 }
 
-func (m *relHandlerRelationalDB) DeleteRelationshipsByFact(_ context.Context, _ string) error {
+func (m *relHandlerRelationalDB) DeleteRelationshipsByEntity(_ context.Context, _ string) error {
 	return nil
 }
 
 func (m *relHandlerRelationalDB) FindRelationshipBetween(_ context.Context, sourceID, targetID string) (*entities.Relationship, error) {
 	for _, rel := range m.relationships {
-		if rel.SourceFactID == sourceID && rel.TargetFactID == targetID {
+		if rel.SourceEntityID == sourceID && rel.TargetEntityID == targetID {
 			return rel, nil
 		}
-		if rel.Bidirectional && rel.SourceFactID == targetID && rel.TargetFactID == sourceID {
+		if rel.Bidirectional && rel.SourceEntityID == targetID && rel.TargetEntityID == sourceID {
 			return rel, nil
 		}
 	}
 	return nil, nil
 }
 
-func (m *relHandlerRelationalDB) FindRelatedFacts(_ context.Context, factID string, _ int) ([]string, error) {
+func (m *relHandlerRelationalDB) FindRelatedEntities(_ context.Context, entityID string, _ int) ([]string, error) {
 	seen := make(map[string]bool)
 	for _, rel := range m.relationships {
-		if rel.SourceFactID == factID {
-			seen[rel.TargetFactID] = true
+		if rel.SourceEntityID == entityID {
+			seen[rel.TargetEntityID] = true
 		}
-		if rel.Bidirectional && rel.TargetFactID == factID {
-			seen[rel.SourceFactID] = true
+		if rel.Bidirectional && rel.TargetEntityID == entityID {
+			seen[rel.SourceEntityID] = true
 		}
 	}
 	result := make([]string, 0, len(seen))
@@ -174,7 +232,7 @@ func (m *relHandlerRelationalDB) CountRelationships(_ context.Context) (int, err
 	return len(m.relationships), nil
 }
 
-// No-op implementations
+// No-op implementations for other methods.
 func (m *relHandlerRelationalDB) SaveEntityType(_ context.Context, _ *entities.EntityType) error {
 	return nil
 }
@@ -229,51 +287,35 @@ func setupRelationshipHandlerTest() (*RelationshipHandler, *relHandlerVectorDB, 
 	embedder := &relHandlerEmbedder{}
 
 	svc := services.NewRelationshipService(vectorDB, relationalDB, embedder)
-	handler := NewRelationshipHandler(svc, vectorDB)
+	handler := NewRelationshipHandler(svc, relationalDB)
 
 	return handler, vectorDB, relationalDB
 }
 
 func TestRelationshipHandler_HandleCreate(t *testing.T) {
+	const worldID = "test-world"
+
 	t.Run("successful creation", func(t *testing.T) {
-		handler, vectorDB, _ := setupRelationshipHandlerTest()
+		handler, _, _ := setupRelationshipHandlerTest()
 		ctx := context.Background()
 
-		// Add facts
-		vectorDB.facts["fact-1"] = entities.Fact{ID: "fact-1", Subject: "Alice"}
-		vectorDB.facts["fact-2"] = entities.Fact{ID: "fact-2", Subject: "Bob"}
-
-		rel, err := handler.HandleCreate(ctx, "fact-1", "ally", "fact-2", true)
+		rel, err := handler.HandleCreate(ctx, worldID, "Alice", "ally", "Bob", true)
 		require.NoError(t, err)
 		require.NotNil(t, rel)
 
-		assert.Equal(t, "fact-1", rel.SourceFactID)
-		assert.Equal(t, "fact-2", rel.TargetFactID)
+		assert.NotEmpty(t, rel.SourceEntityID)
+		assert.NotEmpty(t, rel.TargetEntityID)
 		assert.Equal(t, entities.RelationAlly, rel.Type)
 		assert.True(t, rel.Bidirectional)
 	})
 
 	t.Run("invalid relationship type", func(t *testing.T) {
-		handler, vectorDB, _ := setupRelationshipHandlerTest()
+		handler, _, _ := setupRelationshipHandlerTest()
 		ctx := context.Background()
 
-		vectorDB.facts["fact-1"] = entities.Fact{ID: "fact-1", Subject: "Alice"}
-		vectorDB.facts["fact-2"] = entities.Fact{ID: "fact-2", Subject: "Bob"}
-
-		_, err := handler.HandleCreate(ctx, "fact-1", "invalid_type", "fact-2", false)
+		_, err := handler.HandleCreate(ctx, worldID, "Alice", "invalid_type", "Bob", false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid relationship type")
-	})
-
-	t.Run("source fact not found", func(t *testing.T) {
-		handler, vectorDB, _ := setupRelationshipHandlerTest()
-		ctx := context.Background()
-
-		vectorDB.facts["fact-2"] = entities.Fact{ID: "fact-2", Subject: "Bob"}
-
-		_, err := handler.HandleCreate(ctx, "fact-1", "ally", "fact-2", false)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "source fact not found")
 	})
 
 	t.Run("all valid relationship types", func(t *testing.T) {
@@ -283,13 +325,10 @@ func TestRelationshipHandler_HandleCreate(t *testing.T) {
 		}
 
 		for _, relType := range validTypes {
-			handler, vectorDB, _ := setupRelationshipHandlerTest()
+			handler, _, _ := setupRelationshipHandlerTest()
 			ctx := context.Background()
 
-			vectorDB.facts["fact-1"] = entities.Fact{ID: "fact-1", Subject: "Alice"}
-			vectorDB.facts["fact-2"] = entities.Fact{ID: "fact-2", Subject: "Bob"}
-
-			rel, err := handler.HandleCreate(ctx, "fact-1", relType, "fact-2", false)
+			rel, err := handler.HandleCreate(ctx, worldID, "Alice", relType, "Bob", false)
 			require.NoError(t, err, "type %s should be valid", relType)
 			assert.Equal(t, entities.RelationType(relType), rel.Type)
 		}
@@ -297,19 +336,21 @@ func TestRelationshipHandler_HandleCreate(t *testing.T) {
 }
 
 func TestRelationshipHandler_HandleDelete(t *testing.T) {
+	const worldID = "test-world"
+
 	t.Run("successful deletion", func(t *testing.T) {
-		handler, vectorDB, relationalDB := setupRelationshipHandlerTest()
+		handler, _, relationalDB := setupRelationshipHandlerTest()
 		ctx := context.Background()
 
-		// Pre-add relationship
-		relationalDB.relationships["rel-1"] = &entities.Relationship{
-			ID:           "rel-1",
-			SourceFactID: "fact-1",
-			TargetFactID: "fact-2",
-		}
-		vectorDB.facts["rel-1"] = entities.Fact{ID: "rel-1"}
+		// Create relationship first
+		rel, err := handler.HandleCreate(ctx, worldID, "Alice", "ally", "Bob", true)
+		require.NoError(t, err)
 
-		err := handler.HandleDelete(ctx, "rel-1")
+		// Verify it exists
+		assert.Len(t, relationalDB.relationships, 1)
+
+		// Delete it
+		err = handler.HandleDelete(ctx, rel.ID)
 		require.NoError(t, err)
 
 		assert.Len(t, relationalDB.relationships, 0)
@@ -317,58 +358,41 @@ func TestRelationshipHandler_HandleDelete(t *testing.T) {
 }
 
 func TestRelationshipHandler_HandleList(t *testing.T) {
-	t.Run("returns relationships with fact details", func(t *testing.T) {
-		handler, vectorDB, relationalDB := setupRelationshipHandlerTest()
+	const worldID = "test-world"
+
+	t.Run("returns relationships with entity details", func(t *testing.T) {
+		handler, _, _ := setupRelationshipHandlerTest()
 		ctx := context.Background()
 
-		// Add facts
-		vectorDB.facts["fact-1"] = entities.Fact{ID: "fact-1", Subject: "Alice"}
-		vectorDB.facts["fact-2"] = entities.Fact{ID: "fact-2", Subject: "Bob"}
+		// Create relationship (entities auto-created)
+		_, err := handler.HandleCreate(ctx, worldID, "Alice", "ally", "Bob", true)
+		require.NoError(t, err)
 
-		// Add relationship
-		relationalDB.relationships["rel-1"] = &entities.Relationship{
-			ID:           "rel-1",
-			SourceFactID: "fact-1",
-			TargetFactID: "fact-2",
-			Type:         entities.RelationAlly,
-			CreatedAt:    time.Now(),
-		}
-
-		result, err := handler.HandleList(ctx, "fact-1", ListOptions{})
+		result, err := handler.HandleList(ctx, worldID, "Alice", ListOptions{})
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		assert.Len(t, result.Relationships, 1)
 
 		info := result.Relationships[0]
-		assert.Equal(t, "rel-1", info.Relationship.ID)
-		require.NotNil(t, info.SourceFact)
-		require.NotNil(t, info.TargetFact)
-		assert.Equal(t, "Alice", info.SourceFact.Subject)
-		assert.Equal(t, "Bob", info.TargetFact.Subject)
+		require.NotNil(t, info.SourceEntity)
+		require.NotNil(t, info.TargetEntity)
+		assert.Equal(t, "Alice", info.SourceEntity.Name)
+		assert.Equal(t, "Bob", info.TargetEntity.Name)
 	})
 
 	t.Run("filters by type", func(t *testing.T) {
-		handler, vectorDB, relationalDB := setupRelationshipHandlerTest()
+		handler, _, _ := setupRelationshipHandlerTest()
 		ctx := context.Background()
 
-		vectorDB.facts["fact-1"] = entities.Fact{ID: "fact-1", Subject: "Alice"}
-		vectorDB.facts["fact-2"] = entities.Fact{ID: "fact-2", Subject: "Bob"}
-		vectorDB.facts["fact-3"] = entities.Fact{ID: "fact-3", Subject: "City"}
+		// Create relationships of different types
+		_, err := handler.HandleCreate(ctx, worldID, "Alice", "ally", "Bob", true)
+		require.NoError(t, err)
 
-		relationalDB.relationships["rel-1"] = &entities.Relationship{
-			ID:           "rel-1",
-			SourceFactID: "fact-1",
-			TargetFactID: "fact-2",
-			Type:         entities.RelationAlly,
-		}
-		relationalDB.relationships["rel-2"] = &entities.Relationship{
-			ID:           "rel-2",
-			SourceFactID: "fact-1",
-			TargetFactID: "fact-3",
-			Type:         entities.RelationLocatedIn,
-		}
+		_, err = handler.HandleCreate(ctx, worldID, "Alice", "located_in", "City", false)
+		require.NoError(t, err)
 
-		result, err := handler.HandleList(ctx, "fact-1", ListOptions{Type: "ally"})
+		// Filter by ally
+		result, err := handler.HandleList(ctx, worldID, "Alice", ListOptions{Type: "ally"})
 		require.NoError(t, err)
 		assert.Len(t, result.Relationships, 1)
 		assert.Equal(t, entities.RelationAlly, result.Relationships[0].Relationship.Type)
@@ -378,47 +402,51 @@ func TestRelationshipHandler_HandleList(t *testing.T) {
 		handler, _, _ := setupRelationshipHandlerTest()
 		ctx := context.Background()
 
-		result, err := handler.HandleList(ctx, "nonexistent", ListOptions{})
+		result, err := handler.HandleList(ctx, worldID, "NonexistentEntity", ListOptions{})
 		require.NoError(t, err)
 		assert.Empty(t, result.Relationships)
 	})
 }
 
 func TestRelationshipHandler_HandleFindBetween(t *testing.T) {
+	const worldID = "test-world"
+
 	t.Run("finds relationship", func(t *testing.T) {
-		handler, _, relationalDB := setupRelationshipHandlerTest()
+		handler, _, _ := setupRelationshipHandlerTest()
 		ctx := context.Background()
 
-		relationalDB.relationships["rel-1"] = &entities.Relationship{
-			ID:           "rel-1",
-			SourceFactID: "fact-1",
-			TargetFactID: "fact-2",
-			Type:         entities.RelationAlly,
-		}
-
-		rel, err := handler.HandleFindBetween(ctx, "fact-1", "fact-2")
+		rel, err := handler.HandleCreate(ctx, worldID, "Alice", "ally", "Bob", true)
 		require.NoError(t, err)
-		require.NotNil(t, rel)
-		assert.Equal(t, "rel-1", rel.ID)
+
+		found, err := handler.HandleFindBetween(ctx, rel.SourceEntityID, rel.TargetEntityID)
+		require.NoError(t, err)
+		require.NotNil(t, found)
+		assert.Equal(t, rel.ID, found.ID)
 	})
 
 	t.Run("returns nil when not found", func(t *testing.T) {
 		handler, _, _ := setupRelationshipHandlerTest()
 		ctx := context.Background()
 
-		rel, err := handler.HandleFindBetween(ctx, "fact-1", "fact-2")
+		rel, err := handler.HandleFindBetween(ctx, "nonexistent-1", "nonexistent-2")
 		require.NoError(t, err)
 		assert.Nil(t, rel)
 	})
 }
 
 func TestRelationshipHandler_HandleCount(t *testing.T) {
+	const worldID = "test-world"
+
 	t.Run("returns count", func(t *testing.T) {
-		handler, _, relationalDB := setupRelationshipHandlerTest()
+		handler, _, _ := setupRelationshipHandlerTest()
 		ctx := context.Background()
 
-		relationalDB.relationships["rel-1"] = &entities.Relationship{ID: "rel-1"}
-		relationalDB.relationships["rel-2"] = &entities.Relationship{ID: "rel-2"}
+		// Create relationships
+		_, err := handler.HandleCreate(ctx, worldID, "Alice", "ally", "Bob", true)
+		require.NoError(t, err)
+
+		_, err = handler.HandleCreate(ctx, worldID, "Alice", "enemy", "Eve", true)
+		require.NoError(t, err)
 
 		count, err := handler.HandleCount(ctx)
 		require.NoError(t, err)

@@ -10,13 +10,13 @@ import (
 	"github.com/google/uuid"
 )
 
-// RelatedFact represents a fact connected through relationships.
-type RelatedFact struct {
-	FactID string `json:"fact_id"`
-	Depth  int    `json:"depth"`
+// RelatedEntity represents an entity connected through relationships.
+type RelatedEntity struct {
+	EntityID string `json:"entity_id"`
+	Depth    int    `json:"depth"`
 }
 
-// RelationshipService manages relationships between facts.
+// RelationshipService manages relationships between entities.
 type RelationshipService struct {
 	vectorDB     ports.VectorDB
 	relationalDB ports.RelationalDB
@@ -36,45 +36,46 @@ func NewRelationshipService(
 	}
 }
 
-// Create creates a new relationship between two facts.
-// It validates both facts exist, checks for duplicates, and stores the relationship
-// in both SQLite (for graph queries) and Qdrant (for semantic search).
+// Create creates a new relationship between two entities.
+// Entities are automatically created if they don't exist.
+// Stores the relationship in both SQLite (for graph queries) and Qdrant (for semantic search).
 func (s *RelationshipService) Create(
 	ctx context.Context,
-	sourceFactID string,
+	worldID string,
+	sourceEntityName string,
 	relType entities.RelationType,
-	targetFactID string,
+	targetEntityName string,
 	bidirectional bool,
 ) (*entities.Relationship, error) {
-	// Validate both facts exist
-	exists, err := s.vectorDB.ExistsByIDs(ctx, []string{sourceFactID, targetFactID})
+	// Find or create source entity
+	sourceEntity, err := s.relationalDB.FindOrCreateEntity(ctx, worldID, sourceEntityName)
 	if err != nil {
-		return nil, fmt.Errorf("checking facts exist: %w", err)
+		return nil, fmt.Errorf("finding/creating source entity: %w", err)
 	}
-	if !exists[sourceFactID] {
-		return nil, fmt.Errorf("source fact not found: %s", sourceFactID)
-	}
-	if !exists[targetFactID] {
-		return nil, fmt.Errorf("target fact not found: %s", targetFactID)
+
+	// Find or create target entity
+	targetEntity, err := s.relationalDB.FindOrCreateEntity(ctx, worldID, targetEntityName)
+	if err != nil {
+		return nil, fmt.Errorf("finding/creating target entity: %w", err)
 	}
 
 	// Check for duplicate relationship
-	existing, err := s.relationalDB.FindRelationshipBetween(ctx, sourceFactID, targetFactID)
+	existing, err := s.relationalDB.FindRelationshipBetween(ctx, sourceEntity.ID, targetEntity.ID)
 	if err != nil {
 		return nil, fmt.Errorf("checking existing relationship: %w", err)
 	}
 	if existing != nil {
-		return nil, fmt.Errorf("relationship already exists between these facts (id: %s)", existing.ID)
+		return nil, fmt.Errorf("relationship already exists between these entities (id: %s)", existing.ID)
 	}
 
 	// Create relationship
 	rel := &entities.Relationship{
-		ID:            uuid.New().String(),
-		SourceFactID:  sourceFactID,
-		TargetFactID:  targetFactID,
-		Type:          relType,
-		Bidirectional: bidirectional,
-		CreatedAt:     time.Now(),
+		ID:             uuid.New().String(),
+		SourceEntityID: sourceEntity.ID,
+		TargetEntityID: targetEntity.ID,
+		Type:           relType,
+		Bidirectional:  bidirectional,
+		CreatedAt:      time.Now(),
 	}
 
 	// Save to SQLite for graph queries
@@ -83,7 +84,7 @@ func (s *RelationshipService) Create(
 	}
 
 	// Create a fact for semantic search
-	if err := s.createRelationshipFact(ctx, rel); err != nil {
+	if err := s.createRelationshipFact(ctx, rel, sourceEntity.Name, targetEntity.Name); err != nil {
 		// Rollback SQLite save
 		_ = s.relationalDB.DeleteRelationship(ctx, rel.ID)
 		return nil, fmt.Errorf("creating relationship fact: %w", err)
@@ -93,26 +94,10 @@ func (s *RelationshipService) Create(
 }
 
 // createRelationshipFact creates a Fact representing the relationship for semantic search.
-func (s *RelationshipService) createRelationshipFact(ctx context.Context, rel *entities.Relationship) error {
-	// Fetch source and target facts to build meaningful text
-	facts, err := s.vectorDB.FindByIDs(ctx, []string{rel.SourceFactID, rel.TargetFactID})
-	if err != nil {
-		return fmt.Errorf("fetching facts: %w", err)
-	}
-
-	var sourceSubject, targetSubject string
-	for i := range facts {
-		if facts[i].ID == rel.SourceFactID {
-			sourceSubject = facts[i].Subject
-		}
-		if facts[i].ID == rel.TargetFactID {
-			targetSubject = facts[i].Subject
-		}
-	}
-
+func (s *RelationshipService) createRelationshipFact(ctx context.Context, rel *entities.Relationship, sourceName, targetName string) error {
 	// Build searchable text
 	predicate := string(rel.Type)
-	searchText := fmt.Sprintf("%s %s %s", sourceSubject, predicate, targetSubject)
+	searchText := fmt.Sprintf("%s %s %s", sourceName, predicate, targetName)
 
 	// Generate embedding
 	embedding, err := s.embedder.Embed(ctx, searchText)
@@ -124,10 +109,10 @@ func (s *RelationshipService) createRelationshipFact(ctx context.Context, rel *e
 	fact := &entities.Fact{
 		ID:         rel.ID,
 		Type:       entities.FactTypeRelationship,
-		Subject:    sourceSubject,
+		Subject:    sourceName,
 		Predicate:  predicate,
-		Object:     targetSubject,
-		Context:    fmt.Sprintf("Relationship between %s and %s", rel.SourceFactID, rel.TargetFactID),
+		Object:     targetName,
+		Context:    fmt.Sprintf("Relationship between %s and %s", sourceName, targetName),
 		SourceFile: "relationship",
 		Confidence: 1.0,
 		Embedding:  embedding,
@@ -153,40 +138,52 @@ func (s *RelationshipService) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// List returns all relationships for a fact.
-func (s *RelationshipService) List(ctx context.Context, factID string) ([]entities.Relationship, error) {
-	return s.relationalDB.FindRelationshipsByFact(ctx, factID)
+// List returns all relationships for an entity.
+func (s *RelationshipService) List(ctx context.Context, entityID string) ([]entities.Relationship, error) {
+	return s.relationalDB.FindRelationshipsByEntity(ctx, entityID)
 }
 
-// ListWithDepth returns related facts up to the specified depth.
-func (s *RelationshipService) ListWithDepth(ctx context.Context, factID string, depth int) ([]RelatedFact, error) {
-	if depth < 1 {
-		return []RelatedFact{}, nil
-	}
-
-	factIDs, err := s.relationalDB.FindRelatedFacts(ctx, factID, depth)
+// ListByName returns all relationships for an entity by name.
+func (s *RelationshipService) ListByName(ctx context.Context, worldID, entityName string) ([]entities.Relationship, error) {
+	entity, err := s.relationalDB.FindEntityByName(ctx, worldID, entityName)
 	if err != nil {
-		return nil, fmt.Errorf("finding related facts: %w", err)
+		return nil, fmt.Errorf("finding entity: %w", err)
+	}
+	if entity == nil {
+		return []entities.Relationship{}, nil
+	}
+	return s.relationalDB.FindRelationshipsByEntity(ctx, entity.ID)
+}
+
+// ListWithDepth returns related entities up to the specified depth.
+func (s *RelationshipService) ListWithDepth(ctx context.Context, entityID string, depth int) ([]RelatedEntity, error) {
+	if depth < 1 {
+		return []RelatedEntity{}, nil
 	}
 
-	// Convert to RelatedFact structs
-	// Note: The current implementation doesn't track depth per fact,
+	entityIDs, err := s.relationalDB.FindRelatedEntities(ctx, entityID, depth)
+	if err != nil {
+		return nil, fmt.Errorf("finding related entities: %w", err)
+	}
+
+	// Convert to RelatedEntity structs
+	// Note: The current implementation doesn't track depth per entity,
 	// so we set depth to 0 (unknown). A more sophisticated implementation
 	// could track the actual depth during traversal.
-	result := make([]RelatedFact, len(factIDs))
-	for i, id := range factIDs {
-		result[i] = RelatedFact{
-			FactID: id,
-			Depth:  0,
+	result := make([]RelatedEntity, len(entityIDs))
+	for i, id := range entityIDs {
+		result[i] = RelatedEntity{
+			EntityID: id,
+			Depth:    0,
 		}
 	}
 
 	return result, nil
 }
 
-// FindBetween finds a direct relationship between two facts.
-func (s *RelationshipService) FindBetween(ctx context.Context, sourceID, targetID string) (*entities.Relationship, error) {
-	return s.relationalDB.FindRelationshipBetween(ctx, sourceID, targetID)
+// FindBetween finds a direct relationship between two entities.
+func (s *RelationshipService) FindBetween(ctx context.Context, sourceEntityID, targetEntityID string) (*entities.Relationship, error) {
+	return s.relationalDB.FindRelationshipBetween(ctx, sourceEntityID, targetEntityID)
 }
 
 // Count returns the total number of relationships.

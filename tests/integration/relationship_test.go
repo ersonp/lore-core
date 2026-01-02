@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"path/filepath"
+	"sort"
 	"testing"
 	"time"
 
@@ -132,58 +133,42 @@ func setupRelationshipTest(t *testing.T) (*handlers.RelationshipHandler, *relTes
 	embedder := &relTestEmbedder{}
 
 	svc := services.NewRelationshipService(vectorDB, repo, embedder)
-	handler := handlers.NewRelationshipHandler(svc, vectorDB)
+	handler := handlers.NewRelationshipHandler(svc, repo)
 
 	return handler, vectorDB, repo
 }
+
+const testWorldID = "test-world"
 
 func TestRelationship_Integration_CreateAndQuery(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	handler, vectorDB, _ := setupRelationshipTest(t)
+	handler, _, _ := setupRelationshipTest(t)
 	ctx := context.Background()
 
-	// Create two facts
-	vectorDB.facts["fact-alice"] = entities.Fact{
-		ID:        "fact-alice",
-		Type:      entities.FactTypeCharacter,
-		Subject:   "Alice",
-		Predicate: "is",
-		Object:    "a warrior",
-		CreatedAt: time.Now(),
-	}
-	vectorDB.facts["fact-bob"] = entities.Fact{
-		ID:        "fact-bob",
-		Type:      entities.FactTypeCharacter,
-		Subject:   "Bob",
-		Predicate: "is",
-		Object:    "a mage",
-		CreatedAt: time.Now(),
-	}
-
-	// Create relationship
-	rel, err := handler.HandleCreate(ctx, "fact-alice", "ally", "fact-bob", true)
+	// Create relationship (entities auto-created)
+	rel, err := handler.HandleCreate(ctx, testWorldID, "Alice", "ally", "Bob", true)
 	require.NoError(t, err)
 	require.NotNil(t, rel)
 
-	assert.Equal(t, "fact-alice", rel.SourceFactID)
-	assert.Equal(t, "fact-bob", rel.TargetFactID)
+	assert.NotEmpty(t, rel.SourceEntityID)
+	assert.NotEmpty(t, rel.TargetEntityID)
 	assert.Equal(t, entities.RelationAlly, rel.Type)
 	assert.True(t, rel.Bidirectional)
 
 	// Query relationships from source
-	result, err := handler.HandleList(ctx, "fact-alice", handlers.ListOptions{})
+	result, err := handler.HandleList(ctx, testWorldID, "Alice", handlers.ListOptions{})
 	require.NoError(t, err)
 	require.Len(t, result.Relationships, 1)
 
 	info := result.Relationships[0]
 	assert.Equal(t, entities.RelationAlly, info.Relationship.Type)
-	require.NotNil(t, info.SourceFact)
-	require.NotNil(t, info.TargetFact)
-	assert.Equal(t, "Alice", info.SourceFact.Subject)
-	assert.Equal(t, "Bob", info.TargetFact.Subject)
+	require.NotNil(t, info.SourceEntity)
+	require.NotNil(t, info.TargetEntity)
+	assert.Equal(t, "Alice", info.SourceEntity.Name)
+	assert.Equal(t, "Bob", info.TargetEntity.Name)
 }
 
 func TestRelationship_Integration_Bidirectional(t *testing.T) {
@@ -191,24 +176,20 @@ func TestRelationship_Integration_Bidirectional(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	handler, vectorDB, _ := setupRelationshipTest(t)
+	handler, _, _ := setupRelationshipTest(t)
 	ctx := context.Background()
 
-	// Create facts
-	vectorDB.facts["fact-a"] = entities.Fact{ID: "fact-a", Subject: "Entity A"}
-	vectorDB.facts["fact-b"] = entities.Fact{ID: "fact-b", Subject: "Entity B"}
-
 	// Create bidirectional relationship
-	_, err := handler.HandleCreate(ctx, "fact-a", "ally", "fact-b", true)
+	_, err := handler.HandleCreate(ctx, testWorldID, "EntityA", "ally", "EntityB", true)
 	require.NoError(t, err)
 
 	// Query from source - should find target
-	resultA, err := handler.HandleList(ctx, "fact-a", handlers.ListOptions{})
+	resultA, err := handler.HandleList(ctx, testWorldID, "EntityA", handlers.ListOptions{})
 	require.NoError(t, err)
 	require.Len(t, resultA.Relationships, 1)
 
 	// Query from target - should find source (bidirectional)
-	resultB, err := handler.HandleList(ctx, "fact-b", handlers.ListOptions{})
+	resultB, err := handler.HandleList(ctx, testWorldID, "EntityB", handlers.ListOptions{})
 	require.NoError(t, err)
 	require.Len(t, resultB.Relationships, 1)
 
@@ -221,24 +202,20 @@ func TestRelationship_Integration_Unidirectional(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	handler, vectorDB, _ := setupRelationshipTest(t)
+	handler, _, _ := setupRelationshipTest(t)
 	ctx := context.Background()
 
-	// Create facts
-	vectorDB.facts["fact-a"] = entities.Fact{ID: "fact-a", Subject: "Entity A"}
-	vectorDB.facts["fact-b"] = entities.Fact{ID: "fact-b", Subject: "Entity B"}
-
 	// Create unidirectional relationship (A -> B only)
-	_, err := handler.HandleCreate(ctx, "fact-a", "located_in", "fact-b", false)
+	_, err := handler.HandleCreate(ctx, testWorldID, "EntityA", "located_in", "EntityB", false)
 	require.NoError(t, err)
 
 	// Query from source - should find target
-	resultA, err := handler.HandleList(ctx, "fact-a", handlers.ListOptions{})
+	resultA, err := handler.HandleList(ctx, testWorldID, "EntityA", handlers.ListOptions{})
 	require.NoError(t, err)
 	require.Len(t, resultA.Relationships, 1)
 
 	// Query from target - should NOT find source (unidirectional)
-	resultB, err := handler.HandleList(ctx, "fact-b", handlers.ListOptions{})
+	resultB, err := handler.HandleList(ctx, testWorldID, "EntityB", handlers.ListOptions{})
 	require.NoError(t, err)
 	assert.Len(t, resultB.Relationships, 0)
 }
@@ -248,34 +225,29 @@ func TestRelationship_Integration_TypeFilter(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	handler, vectorDB, _ := setupRelationshipTest(t)
+	handler, _, _ := setupRelationshipTest(t)
 	ctx := context.Background()
 
-	// Create facts
-	vectorDB.facts["fact-a"] = entities.Fact{ID: "fact-a", Subject: "Entity A"}
-	vectorDB.facts["fact-b"] = entities.Fact{ID: "fact-b", Subject: "Entity B"}
-	vectorDB.facts["fact-c"] = entities.Fact{ID: "fact-c", Subject: "Entity C"}
-
 	// Create relationships of different types
-	_, err := handler.HandleCreate(ctx, "fact-a", "ally", "fact-b", true)
+	_, err := handler.HandleCreate(ctx, testWorldID, "EntityA", "ally", "EntityB", true)
 	require.NoError(t, err)
 
-	_, err = handler.HandleCreate(ctx, "fact-a", "enemy", "fact-c", true)
+	_, err = handler.HandleCreate(ctx, testWorldID, "EntityA", "enemy", "EntityC", true)
 	require.NoError(t, err)
 
 	// Query all relationships
-	all, err := handler.HandleList(ctx, "fact-a", handlers.ListOptions{})
+	all, err := handler.HandleList(ctx, testWorldID, "EntityA", handlers.ListOptions{})
 	require.NoError(t, err)
 	assert.Len(t, all.Relationships, 2)
 
 	// Query only ally relationships
-	allies, err := handler.HandleList(ctx, "fact-a", handlers.ListOptions{Type: "ally"})
+	allies, err := handler.HandleList(ctx, testWorldID, "EntityA", handlers.ListOptions{Type: "ally"})
 	require.NoError(t, err)
 	require.Len(t, allies.Relationships, 1)
 	assert.Equal(t, entities.RelationAlly, allies.Relationships[0].Relationship.Type)
 
 	// Query only enemy relationships
-	enemies, err := handler.HandleList(ctx, "fact-a", handlers.ListOptions{Type: "enemy"})
+	enemies, err := handler.HandleList(ctx, testWorldID, "EntityA", handlers.ListOptions{Type: "enemy"})
 	require.NoError(t, err)
 	require.Len(t, enemies.Relationships, 1)
 	assert.Equal(t, entities.RelationEnemy, enemies.Relationships[0].Relationship.Type)
@@ -289,16 +261,12 @@ func TestRelationship_Integration_Delete(t *testing.T) {
 	handler, vectorDB, _ := setupRelationshipTest(t)
 	ctx := context.Background()
 
-	// Create facts
-	vectorDB.facts["fact-a"] = entities.Fact{ID: "fact-a", Subject: "Entity A"}
-	vectorDB.facts["fact-b"] = entities.Fact{ID: "fact-b", Subject: "Entity B"}
-
 	// Create relationship
-	rel, err := handler.HandleCreate(ctx, "fact-a", "ally", "fact-b", true)
+	rel, err := handler.HandleCreate(ctx, testWorldID, "EntityA", "ally", "EntityB", true)
 	require.NoError(t, err)
 
 	// Verify it exists
-	result, err := handler.HandleList(ctx, "fact-a", handlers.ListOptions{})
+	result, err := handler.HandleList(ctx, testWorldID, "EntityA", handlers.ListOptions{})
 	require.NoError(t, err)
 	require.Len(t, result.Relationships, 1)
 
@@ -307,7 +275,7 @@ func TestRelationship_Integration_Delete(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify it's gone
-	result, err = handler.HandleList(ctx, "fact-a", handlers.ListOptions{})
+	result, err = handler.HandleList(ctx, testWorldID, "EntityA", handlers.ListOptions{})
 	require.NoError(t, err)
 	assert.Len(t, result.Relationships, 0)
 
@@ -321,28 +289,27 @@ func TestRelationship_Integration_FindBetween(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	handler, vectorDB, _ := setupRelationshipTest(t)
+	handler, _, _ := setupRelationshipTest(t)
 	ctx := context.Background()
 
-	// Create facts
-	vectorDB.facts["fact-a"] = entities.Fact{ID: "fact-a", Subject: "Entity A"}
-	vectorDB.facts["fact-b"] = entities.Fact{ID: "fact-b", Subject: "Entity B"}
-	vectorDB.facts["fact-c"] = entities.Fact{ID: "fact-c", Subject: "Entity C"}
-
 	// Create relationship between A and B
-	_, err := handler.HandleCreate(ctx, "fact-a", "ally", "fact-b", true)
+	rel, err := handler.HandleCreate(ctx, testWorldID, "EntityA", "ally", "EntityB", true)
 	require.NoError(t, err)
 
 	// Find relationship between A and B - should exist
-	rel, err := handler.HandleFindBetween(ctx, "fact-a", "fact-b")
+	found, err := handler.HandleFindBetween(ctx, rel.SourceEntityID, rel.TargetEntityID)
 	require.NoError(t, err)
-	require.NotNil(t, rel)
-	assert.Equal(t, entities.RelationAlly, rel.Type)
+	require.NotNil(t, found)
+	assert.Equal(t, entities.RelationAlly, found.Type)
 
-	// Find relationship between A and C - should not exist
-	rel, err = handler.HandleFindBetween(ctx, "fact-a", "fact-c")
+	// Create another entity - no relationship with A
+	_, err = handler.HandleCreate(ctx, testWorldID, "EntityA", "enemy", "EntityC", true)
 	require.NoError(t, err)
-	assert.Nil(t, rel)
+
+	// Find relationship between B and C - should not exist
+	found, err = handler.HandleFindBetween(ctx, rel.TargetEntityID, "nonexistent")
+	require.NoError(t, err)
+	assert.Nil(t, found)
 }
 
 func TestRelationship_Integration_Count(t *testing.T) {
@@ -350,7 +317,7 @@ func TestRelationship_Integration_Count(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	handler, vectorDB, _ := setupRelationshipTest(t)
+	handler, _, _ := setupRelationshipTest(t)
 	ctx := context.Background()
 
 	// Initially no relationships
@@ -358,16 +325,11 @@ func TestRelationship_Integration_Count(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, count)
 
-	// Create facts
-	vectorDB.facts["fact-a"] = entities.Fact{ID: "fact-a", Subject: "Entity A"}
-	vectorDB.facts["fact-b"] = entities.Fact{ID: "fact-b", Subject: "Entity B"}
-	vectorDB.facts["fact-c"] = entities.Fact{ID: "fact-c", Subject: "Entity C"}
-
 	// Create relationships
-	_, err = handler.HandleCreate(ctx, "fact-a", "ally", "fact-b", true)
+	_, err = handler.HandleCreate(ctx, testWorldID, "EntityA", "ally", "EntityB", true)
 	require.NoError(t, err)
 
-	_, err = handler.HandleCreate(ctx, "fact-a", "enemy", "fact-c", true)
+	_, err = handler.HandleCreate(ctx, testWorldID, "EntityA", "enemy", "EntityC", true)
 	require.NoError(t, err)
 
 	// Should have 2 relationships
@@ -381,28 +343,23 @@ func TestRelationship_Integration_AllRelationTypes(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	handler, vectorDB, _ := setupRelationshipTest(t)
+	handler, _, _ := setupRelationshipTest(t)
 	ctx := context.Background()
-
-	// Create facts
-	vectorDB.facts["fact-source"] = entities.Fact{ID: "fact-source", Subject: "Source"}
 
 	validTypes := []string{
 		"parent", "child", "sibling", "spouse",
 		"ally", "enemy", "located_in", "owns", "member_of", "created",
 	}
 
-	for i, relType := range validTypes {
-		targetID := "fact-target-" + relType
-		vectorDB.facts[targetID] = entities.Fact{ID: targetID, Subject: "Target " + relType}
+	for _, relType := range validTypes {
+		targetName := "Target" + relType
 
-		rel, err := handler.HandleCreate(ctx, "fact-source", relType, targetID, false)
+		rel, err := handler.HandleCreate(ctx, testWorldID, "Source", relType, targetName, false)
 		require.NoError(t, err, "type %s should be valid", relType)
 		assert.Equal(t, entities.RelationType(relType), rel.Type)
 
 		// Clean up for next iteration
 		_ = handler.HandleDelete(ctx, rel.ID)
-		_ = i // silence unused warning
 	}
 }
 
@@ -411,34 +368,13 @@ func TestRelationship_Integration_InvalidType(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	handler, vectorDB, _ := setupRelationshipTest(t)
+	handler, _, _ := setupRelationshipTest(t)
 	ctx := context.Background()
-
-	// Create facts
-	vectorDB.facts["fact-a"] = entities.Fact{ID: "fact-a", Subject: "Entity A"}
-	vectorDB.facts["fact-b"] = entities.Fact{ID: "fact-b", Subject: "Entity B"}
 
 	// Try invalid relationship type
-	_, err := handler.HandleCreate(ctx, "fact-a", "invalid_type", "fact-b", true)
+	_, err := handler.HandleCreate(ctx, testWorldID, "EntityA", "invalid_type", "EntityB", true)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid relationship type")
-}
-
-func TestRelationship_Integration_SourceNotFound(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
-
-	handler, vectorDB, _ := setupRelationshipTest(t)
-	ctx := context.Background()
-
-	// Only create target fact
-	vectorDB.facts["fact-b"] = entities.Fact{ID: "fact-b", Subject: "Entity B"}
-
-	// Try to create relationship with non-existent source
-	_, err := handler.HandleCreate(ctx, "fact-a", "ally", "fact-b", true)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "source fact not found")
 }
 
 func TestRelationship_Integration_Persistence(t *testing.T) {
@@ -459,14 +395,11 @@ func TestRelationship_Integration_Persistence(t *testing.T) {
 	vectorDB := newRelTestVectorDB()
 	embedder := &relTestEmbedder{}
 
-	vectorDB.facts["fact-a"] = entities.Fact{ID: "fact-a", Subject: "Entity A"}
-	vectorDB.facts["fact-b"] = entities.Fact{ID: "fact-b", Subject: "Entity B"}
-
 	svc1 := services.NewRelationshipService(vectorDB, repo1, embedder)
-	handler1 := handlers.NewRelationshipHandler(svc1, vectorDB)
+	handler1 := handlers.NewRelationshipHandler(svc1, repo1)
 
 	ctx := context.Background()
-	rel, err := handler1.HandleCreate(ctx, "fact-a", "ally", "fact-b", true)
+	rel, err := handler1.HandleCreate(ctx, testWorldID, "Alice", "ally", "Bob", true)
 	require.NoError(t, err)
 
 	repo1.Close()
@@ -477,9 +410,96 @@ func TestRelationship_Integration_Persistence(t *testing.T) {
 	defer repo2.Close()
 
 	// Relationship should still exist in SQLite
-	rels, err := repo2.FindRelationshipsByFact(ctx, "fact-a")
+	rels, err := repo2.FindRelationshipsByEntity(ctx, rel.SourceEntityID)
 	require.NoError(t, err)
 	require.Len(t, rels, 1)
 	assert.Equal(t, rel.ID, rels[0].ID)
 	assert.Equal(t, entities.RelationAlly, rels[0].Type)
+}
+
+func TestRelationship_Integration_EntityAutoCreation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	handler, _, relationalDB := setupRelationshipTest(t)
+	ctx := context.Background()
+
+	// Entities don't exist yet
+	entity, err := relationalDB.FindEntityByName(ctx, testWorldID, "NewEntity1")
+	require.NoError(t, err)
+	assert.Nil(t, entity)
+
+	// Create relationship - should auto-create entities
+	_, err = handler.HandleCreate(ctx, testWorldID, "NewEntity1", "ally", "NewEntity2", true)
+	require.NoError(t, err)
+
+	// Now entities should exist
+	entity1, err := relationalDB.FindEntityByName(ctx, testWorldID, "NewEntity1")
+	require.NoError(t, err)
+	require.NotNil(t, entity1)
+	assert.Equal(t, "NewEntity1", entity1.Name)
+
+	entity2, err := relationalDB.FindEntityByName(ctx, testWorldID, "NewEntity2")
+	require.NoError(t, err)
+	require.NotNil(t, entity2)
+	assert.Equal(t, "NewEntity2", entity2.Name)
+}
+
+func TestRelationship_Integration_CaseInsensitiveEntityMatch(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	handler, _, _ := setupRelationshipTest(t)
+	ctx := context.Background()
+
+	// Create relationship with "Alice"
+	_, err := handler.HandleCreate(ctx, testWorldID, "Alice", "ally", "Bob", true)
+	require.NoError(t, err)
+
+	// Query with "alice" (lowercase) - should find same entity
+	result, err := handler.HandleList(ctx, testWorldID, "alice", handlers.ListOptions{})
+	require.NoError(t, err)
+	require.Len(t, result.Relationships, 1)
+
+	// Create another relationship with "ALICE" - should use same entity
+	_, err = handler.HandleCreate(ctx, testWorldID, "ALICE", "enemy", "Eve", true)
+	require.NoError(t, err)
+
+	// Query should now show 2 relationships
+	result, err = handler.HandleList(ctx, testWorldID, "Alice", handlers.ListOptions{})
+	require.NoError(t, err)
+
+	// Sort for deterministic test
+	sort.Slice(result.Relationships, func(i, j int) bool {
+		return result.Relationships[i].Relationship.ID < result.Relationships[j].Relationship.ID
+	})
+	assert.Len(t, result.Relationships, 2)
+}
+
+func TestRelationship_Integration_EntityTimestamps(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	handler, _, relationalDB := setupRelationshipTest(t)
+	ctx := context.Background()
+
+	beforeCreate := time.Now()
+
+	// Create relationship - should auto-create entities with timestamps
+	_, err := handler.HandleCreate(ctx, testWorldID, "EntityWithTimestamp", "ally", "OtherEntity", true)
+	require.NoError(t, err)
+
+	afterCreate := time.Now()
+
+	// Check entity has valid timestamp
+	entity, err := relationalDB.FindEntityByName(ctx, testWorldID, "EntityWithTimestamp")
+	require.NoError(t, err)
+	require.NotNil(t, entity)
+
+	assert.False(t, entity.CreatedAt.IsZero(), "CreatedAt should not be zero")
+	assert.True(t, entity.CreatedAt.After(beforeCreate) || entity.CreatedAt.Equal(beforeCreate))
+	assert.True(t, entity.CreatedAt.Before(afterCreate) || entity.CreatedAt.Equal(afterCreate))
 }

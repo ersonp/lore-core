@@ -9,14 +9,16 @@ import (
 
 // RelationalDB is a mock implementation of ports.RelationalDB.
 type RelationalDB struct {
-	Types map[string]*entities.EntityType
-	Err   error
+	Types    map[string]*entities.EntityType
+	Entities map[string]*entities.Entity
+	Err      error
 }
 
 // NewRelationalDB creates a new mock RelationalDB.
 func NewRelationalDB() *RelationalDB {
 	return &RelationalDB{
-		Types: make(map[string]*entities.EntityType),
+		Types:    make(map[string]*entities.EntityType),
+		Entities: make(map[string]*entities.Entity),
 	}
 }
 
@@ -28,6 +30,106 @@ func (m *RelationalDB) EnsureSchema(_ context.Context) error {
 // Close closes the database connection.
 func (m *RelationalDB) Close() error {
 	return nil
+}
+
+// Entity methods.
+
+// SaveEntity saves or updates an entity.
+func (m *RelationalDB) SaveEntity(_ context.Context, entity *entities.Entity) error {
+	if m.Err != nil {
+		return m.Err
+	}
+	m.Entities[entity.ID] = entity
+	return nil
+}
+
+// FindEntityByName finds an entity by its normalized name.
+func (m *RelationalDB) FindEntityByName(_ context.Context, worldID, name string) (*entities.Entity, error) {
+	if m.Err != nil {
+		return nil, m.Err
+	}
+	normalizedName := entities.NormalizeName(name)
+	for _, e := range m.Entities {
+		if e.WorldID == worldID && e.NormalizedName == normalizedName {
+			return e, nil
+		}
+	}
+	return nil, nil
+}
+
+// FindOrCreateEntity finds an entity by name or creates it if not found.
+func (m *RelationalDB) FindOrCreateEntity(_ context.Context, worldID, name string) (*entities.Entity, error) {
+	if m.Err != nil {
+		return nil, m.Err
+	}
+	normalizedName := entities.NormalizeName(name)
+	for _, e := range m.Entities {
+		if e.WorldID == worldID && e.NormalizedName == normalizedName {
+			return e, nil
+		}
+	}
+	// Create new entity
+	entity := &entities.Entity{
+		ID:             "entity-" + name,
+		WorldID:        worldID,
+		Name:           name,
+		NormalizedName: normalizedName,
+	}
+	m.Entities[entity.ID] = entity
+	return entity, nil
+}
+
+// FindEntityByID finds an entity by its ID.
+func (m *RelationalDB) FindEntityByID(_ context.Context, entityID string) (*entities.Entity, error) {
+	if m.Err != nil {
+		return nil, m.Err
+	}
+	return m.Entities[entityID], nil
+}
+
+// ListEntities lists all entities for a world with pagination.
+func (m *RelationalDB) ListEntities(_ context.Context, worldID string, limit, offset int) ([]*entities.Entity, error) {
+	if m.Err != nil {
+		return nil, m.Err
+	}
+	var result []*entities.Entity
+	for _, e := range m.Entities {
+		if e.WorldID == worldID {
+			result = append(result, e)
+		}
+	}
+	return result, nil
+}
+
+// SearchEntities searches entities by name pattern.
+func (m *RelationalDB) SearchEntities(_ context.Context, worldID, query string, limit int) ([]*entities.Entity, error) {
+	if m.Err != nil {
+		return nil, m.Err
+	}
+	return nil, nil
+}
+
+// DeleteEntity deletes an entity by ID.
+func (m *RelationalDB) DeleteEntity(_ context.Context, entityID string) error {
+	if m.Err != nil {
+		return m.Err
+	}
+	delete(m.Entities, entityID)
+	return nil
+}
+
+// CountEntities returns the total number of entities for a world.
+func (m *RelationalDB) CountEntities(_ context.Context, worldID string) (int, error) {
+	if m.Err != nil {
+		return 0, m.Err
+	}
+	count := 0
+	for _, e := range m.Entities {
+		if e.WorldID == worldID {
+			count++
+		}
+	}
+	return count, nil
 }
 
 // Entity type methods.
@@ -81,8 +183,8 @@ func (m *RelationalDB) SaveRelationship(_ context.Context, _ *entities.Relations
 	return m.Err
 }
 
-// FindRelationshipsByFact finds all relationships involving a fact.
-func (m *RelationalDB) FindRelationshipsByFact(_ context.Context, _ string) ([]entities.Relationship, error) {
+// FindRelationshipsByEntity finds all relationships involving an entity.
+func (m *RelationalDB) FindRelationshipsByEntity(_ context.Context, _ string) ([]entities.Relationship, error) {
 	return nil, m.Err
 }
 
@@ -96,18 +198,18 @@ func (m *RelationalDB) DeleteRelationship(_ context.Context, _ string) error {
 	return m.Err
 }
 
-// DeleteRelationshipsByFact deletes all relationships involving a fact.
-func (m *RelationalDB) DeleteRelationshipsByFact(_ context.Context, _ string) error {
+// DeleteRelationshipsByEntity deletes all relationships involving an entity.
+func (m *RelationalDB) DeleteRelationshipsByEntity(_ context.Context, _ string) error {
 	return m.Err
 }
 
-// FindRelationshipBetween finds a direct relationship between two facts.
+// FindRelationshipBetween finds a direct relationship between two entities.
 func (m *RelationalDB) FindRelationshipBetween(_ context.Context, _, _ string) (*entities.Relationship, error) {
 	return nil, m.Err
 }
 
-// FindRelatedFacts finds all fact IDs connected to the given fact up to the specified depth.
-func (m *RelationalDB) FindRelatedFacts(_ context.Context, _ string, _ int) ([]string, error) {
+// FindRelatedEntities finds all entity IDs connected to the given entity up to the specified depth.
+func (m *RelationalDB) FindRelatedEntities(_ context.Context, _ string, _ int) ([]string, error) {
 	return nil, m.Err
 }
 

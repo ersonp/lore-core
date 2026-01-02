@@ -43,12 +43,12 @@ func TestSQLiteIntegration_FileDatabase(t *testing.T) {
 
 	// Create relationships
 	rel := &entities.Relationship{
-		ID:            "rel-1",
-		SourceFactID:  "fact-1",
-		TargetFactID:  "fact-2",
-		Type:          entities.RelationAlly,
-		Bidirectional: true,
-		CreatedAt:     time.Now(),
+		ID:             "rel-1",
+		SourceEntityID: "entity-1",
+		TargetEntityID: "entity-2",
+		Type:           entities.RelationAlly,
+		Bidirectional:  true,
+		CreatedAt:      time.Now(),
 	}
 	err = repo.SaveRelationship(ctx, rel)
 	require.NoError(t, err)
@@ -83,7 +83,7 @@ func TestSQLiteIntegration_FileDatabase(t *testing.T) {
 	defer repo2.Close()
 
 	// Data should persist
-	rels, err := repo2.FindRelationshipsByFact(ctx, "fact-1")
+	rels, err := repo2.FindRelationshipsByEntity(ctx, "entity-1")
 	require.NoError(t, err)
 	assert.Len(t, rels, 1)
 

@@ -16,12 +16,40 @@ type RelationalDB interface {
 	// Close closes the database connection.
 	Close() error
 
+	// Entity operations
+
+	// SaveEntity saves or updates an entity.
+	SaveEntity(ctx context.Context, entity *entities.Entity) error
+
+	// FindEntityByName finds an entity by its normalized name (case-insensitive).
+	FindEntityByName(ctx context.Context, worldID, name string) (*entities.Entity, error)
+
+	// FindOrCreateEntity finds an entity by name or creates it if not found.
+	FindOrCreateEntity(ctx context.Context, worldID, name string) (*entities.Entity, error)
+
+	// FindEntityByID finds an entity by its ID.
+	FindEntityByID(ctx context.Context, entityID string) (*entities.Entity, error)
+
+	// ListEntities lists all entities for a world with pagination.
+	ListEntities(ctx context.Context, worldID string, limit, offset int) ([]*entities.Entity, error)
+
+	// SearchEntities searches entities by name pattern.
+	SearchEntities(ctx context.Context, worldID, query string, limit int) ([]*entities.Entity, error)
+
+	// DeleteEntity deletes an entity by ID.
+	DeleteEntity(ctx context.Context, entityID string) error
+
+	// CountEntities returns the total number of entities for a world.
+	CountEntities(ctx context.Context, worldID string) (int, error)
+
+	// Relationship operations
+
 	// SaveRelationship saves or updates a relationship.
 	SaveRelationship(ctx context.Context, rel *entities.Relationship) error
 
-	// FindRelationshipsByFact finds all relationships involving a fact.
-	// Returns relationships where the fact is source, or target if bidirectional.
-	FindRelationshipsByFact(ctx context.Context, factID string) ([]entities.Relationship, error)
+	// FindRelationshipsByEntity finds all relationships involving an entity.
+	// Returns relationships where the entity is source, or target if bidirectional.
+	FindRelationshipsByEntity(ctx context.Context, entityID string) ([]entities.Relationship, error)
 
 	// FindRelationshipsByType finds all relationships of a given type.
 	FindRelationshipsByType(ctx context.Context, relType string) ([]entities.Relationship, error)
@@ -29,16 +57,16 @@ type RelationalDB interface {
 	// DeleteRelationship deletes a relationship by ID.
 	DeleteRelationship(ctx context.Context, id string) error
 
-	// DeleteRelationshipsByFact deletes all relationships involving a fact.
-	DeleteRelationshipsByFact(ctx context.Context, factID string) error
+	// DeleteRelationshipsByEntity deletes all relationships involving an entity.
+	DeleteRelationshipsByEntity(ctx context.Context, entityID string) error
 
-	// FindRelationshipBetween finds a direct relationship between two facts.
+	// FindRelationshipBetween finds a direct relationship between two entities.
 	// Returns nil if no relationship exists.
-	FindRelationshipBetween(ctx context.Context, sourceID, targetID string) (*entities.Relationship, error)
+	FindRelationshipBetween(ctx context.Context, sourceEntityID, targetEntityID string) (*entities.Relationship, error)
 
-	// FindRelatedFacts finds all fact IDs connected to the given fact up to the specified depth.
-	// Depth 1 returns directly connected facts, depth 2 includes their connections, etc.
-	FindRelatedFacts(ctx context.Context, factID string, depth int) ([]string, error)
+	// FindRelatedEntities finds all entity IDs connected to the given entity up to the specified depth.
+	// Depth 1 returns directly connected entities, depth 2 includes their connections, etc.
+	FindRelatedEntities(ctx context.Context, entityID string, depth int) ([]string, error)
 
 	// CountRelationships returns the total number of relationships in the database.
 	CountRelationships(ctx context.Context) (int, error)

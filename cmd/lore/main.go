@@ -47,6 +47,7 @@ func run(ctx context.Context) error {
 		newTypesCmd(),
 		newRelateCmd(),
 		newRelationsCmd(),
+		newEntitiesCmd(),
 	)
 
 	return rootCmd.ExecuteContext(ctx)

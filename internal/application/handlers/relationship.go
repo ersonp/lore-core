@@ -18,15 +18,15 @@ var ValidRelationTypes = []string{
 
 // RelationshipHandler handles relationship operations.
 type RelationshipHandler struct {
-	service  *services.RelationshipService
-	vectorDB ports.VectorDB
+	service      *services.RelationshipService
+	relationalDB ports.RelationalDB
 }
 
 // NewRelationshipHandler creates a new RelationshipHandler.
-func NewRelationshipHandler(service *services.RelationshipService, vectorDB ports.VectorDB) *RelationshipHandler {
+func NewRelationshipHandler(service *services.RelationshipService, relationalDB ports.RelationalDB) *RelationshipHandler {
 	return &RelationshipHandler{
-		service:  service,
-		vectorDB: vectorDB,
+		service:      service,
+		relationalDB: relationalDB,
 	}
 }
 
@@ -36,11 +36,11 @@ type ListOptions struct {
 	Depth int    // Graph traversal depth (default 1)
 }
 
-// RelationshipInfo contains a relationship with optional fact details.
+// RelationshipInfo contains a relationship with entity details.
 type RelationshipInfo struct {
 	Relationship entities.Relationship `json:"relationship"`
-	SourceFact   *entities.Fact        `json:"source_fact,omitempty"`
-	TargetFact   *entities.Fact        `json:"target_fact,omitempty"`
+	SourceEntity *entities.Entity      `json:"source_entity,omitempty"`
+	TargetEntity *entities.Entity      `json:"target_entity,omitempty"`
 }
 
 // ListResult contains the result of listing relationships.
@@ -48,12 +48,13 @@ type ListResult struct {
 	Relationships []RelationshipInfo `json:"relationships"`
 }
 
-// HandleCreate creates a new relationship between two facts.
+// HandleCreate creates a new relationship between two entities.
 func (h *RelationshipHandler) HandleCreate(
 	ctx context.Context,
-	sourceID string,
+	worldID string,
+	sourceEntityName string,
 	relType string,
-	targetID string,
+	targetEntityName string,
 	bidirectional bool,
 ) (*entities.Relationship, error) {
 	// Validate relationship type
@@ -62,7 +63,7 @@ func (h *RelationshipHandler) HandleCreate(
 		return nil, err
 	}
 
-	return h.service.Create(ctx, sourceID, rt, targetID, bidirectional)
+	return h.service.Create(ctx, worldID, sourceEntityName, rt, targetEntityName, bidirectional)
 }
 
 // HandleDelete removes a relationship by ID.
@@ -70,10 +71,10 @@ func (h *RelationshipHandler) HandleDelete(ctx context.Context, id string) error
 	return h.service.Delete(ctx, id)
 }
 
-// HandleList returns relationships for a fact with optional filtering.
-func (h *RelationshipHandler) HandleList(ctx context.Context, factID string, opts ListOptions) (*ListResult, error) {
-	// Get relationships
-	relationships, err := h.service.List(ctx, factID)
+// HandleList returns relationships for an entity with optional filtering.
+func (h *RelationshipHandler) HandleList(ctx context.Context, worldID, entityName string, opts ListOptions) (*ListResult, error) {
+	// Get relationships by entity name
+	relationships, err := h.service.ListByName(ctx, worldID, entityName)
 	if err != nil {
 		return nil, fmt.Errorf("listing relationships: %w", err)
 	}
@@ -89,41 +90,36 @@ func (h *RelationshipHandler) HandleList(ctx context.Context, factID string, opt
 		relationships = filtered
 	}
 
-	// Build result with fact details
+	// Build result with entity details
 	result := &ListResult{
 		Relationships: make([]RelationshipInfo, 0, len(relationships)),
 	}
 
-	// Collect unique fact IDs to fetch
-	factIDs := make(map[string]bool)
+	// Collect unique entity IDs to fetch
+	entityIDs := make(map[string]bool)
 	for i := range relationships {
-		factIDs[relationships[i].SourceFactID] = true
-		factIDs[relationships[i].TargetFactID] = true
+		entityIDs[relationships[i].SourceEntityID] = true
+		entityIDs[relationships[i].TargetEntityID] = true
 	}
 
-	// Fetch facts
-	ids := make([]string, 0, len(factIDs))
-	for id := range factIDs {
-		ids = append(ids, id)
-	}
-
-	facts, err := h.vectorDB.FindByIDs(ctx, ids)
-	if err != nil {
-		return nil, fmt.Errorf("fetching facts: %w", err)
-	}
-
-	// Build fact lookup map
-	factMap := make(map[string]*entities.Fact, len(facts))
-	for i := range facts {
-		factMap[facts[i].ID] = &facts[i]
+	// Fetch entities
+	entityMap := make(map[string]*entities.Entity, len(entityIDs))
+	for id := range entityIDs {
+		entity, err := h.relationalDB.FindEntityByID(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("fetching entity %s: %w", id, err)
+		}
+		if entity != nil {
+			entityMap[id] = entity
+		}
 	}
 
 	// Build relationship info
 	for i := range relationships {
 		info := RelationshipInfo{
 			Relationship: relationships[i],
-			SourceFact:   factMap[relationships[i].SourceFactID],
-			TargetFact:   factMap[relationships[i].TargetFactID],
+			SourceEntity: entityMap[relationships[i].SourceEntityID],
+			TargetEntity: entityMap[relationships[i].TargetEntityID],
 		}
 		result.Relationships = append(result.Relationships, info)
 	}
@@ -131,9 +127,9 @@ func (h *RelationshipHandler) HandleList(ctx context.Context, factID string, opt
 	return result, nil
 }
 
-// HandleFindBetween finds a direct relationship between two facts.
-func (h *RelationshipHandler) HandleFindBetween(ctx context.Context, sourceID, targetID string) (*entities.Relationship, error) {
-	return h.service.FindBetween(ctx, sourceID, targetID)
+// HandleFindBetween finds a direct relationship between two entities.
+func (h *RelationshipHandler) HandleFindBetween(ctx context.Context, sourceEntityID, targetEntityID string) (*entities.Relationship, error) {
+	return h.service.FindBetween(ctx, sourceEntityID, targetEntityID)
 }
 
 // HandleCount returns the total number of relationships.

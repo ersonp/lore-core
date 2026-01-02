@@ -158,7 +158,16 @@ func withRelationalDB(fn func(ports.RelationalDB) error) error {
 func withRelationshipHandler(fn func(*handlers.RelationshipHandler) error) error {
 	return withInternalDeps(func(d *internalDeps) error {
 		relationshipService := services.NewRelationshipService(d.repo, d.relationalDB, d.embedder)
-		handler := handlers.NewRelationshipHandler(relationshipService, d.repo)
+		handler := handlers.NewRelationshipHandler(relationshipService, d.relationalDB)
+		return fn(handler)
+	})
+}
+
+// withEntityHandler provides access to the EntityHandler for entity commands.
+func withEntityHandler(fn func(*handlers.EntityHandler) error) error {
+	return withInternalDeps(func(d *internalDeps) error {
+		entityService := services.NewEntityService(d.relationalDB)
+		handler := handlers.NewEntityHandler(entityService)
 		return fn(handler)
 	})
 }
