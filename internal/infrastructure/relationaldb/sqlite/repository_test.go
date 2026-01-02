@@ -131,6 +131,196 @@ func TestRepository_Relationships(t *testing.T) {
 	})
 }
 
+func TestRepository_FindRelationshipBetween(t *testing.T) {
+	repo := setupTestRepo(t)
+	ctx := context.Background()
+
+	// Setup test relationships
+	rel1 := &entities.Relationship{
+		ID:            "rel-between-1",
+		SourceFactID:  "alice",
+		TargetFactID:  "bob",
+		Type:          entities.RelationAlly,
+		Bidirectional: false,
+		CreatedAt:     time.Now(),
+	}
+	rel2 := &entities.Relationship{
+		ID:            "rel-between-2",
+		SourceFactID:  "eve",
+		TargetFactID:  "charlie",
+		Type:          entities.RelationSibling,
+		Bidirectional: true,
+		CreatedAt:     time.Now(),
+	}
+
+	require.NoError(t, repo.SaveRelationship(ctx, rel1))
+	require.NoError(t, repo.SaveRelationship(ctx, rel2))
+
+	t.Run("direct relationship", func(t *testing.T) {
+		found, err := repo.FindRelationshipBetween(ctx, "alice", "bob")
+		require.NoError(t, err)
+		require.NotNil(t, found)
+		assert.Equal(t, "rel-between-1", found.ID)
+		assert.Equal(t, entities.RelationAlly, found.Type)
+	})
+
+	t.Run("reverse direction non-bidirectional returns nil", func(t *testing.T) {
+		found, err := repo.FindRelationshipBetween(ctx, "bob", "alice")
+		require.NoError(t, err)
+		assert.Nil(t, found)
+	})
+
+	t.Run("bidirectional from source", func(t *testing.T) {
+		found, err := repo.FindRelationshipBetween(ctx, "eve", "charlie")
+		require.NoError(t, err)
+		require.NotNil(t, found)
+		assert.Equal(t, "rel-between-2", found.ID)
+	})
+
+	t.Run("bidirectional from target", func(t *testing.T) {
+		found, err := repo.FindRelationshipBetween(ctx, "charlie", "eve")
+		require.NoError(t, err)
+		require.NotNil(t, found)
+		assert.Equal(t, "rel-between-2", found.ID)
+	})
+
+	t.Run("no relationship", func(t *testing.T) {
+		found, err := repo.FindRelationshipBetween(ctx, "alice", "eve")
+		require.NoError(t, err)
+		assert.Nil(t, found)
+	})
+
+	t.Run("nonexistent facts", func(t *testing.T) {
+		found, err := repo.FindRelationshipBetween(ctx, "unknown1", "unknown2")
+		require.NoError(t, err)
+		assert.Nil(t, found)
+	})
+}
+
+// setupGraphTestData creates a test graph: A --ally--> B --sibling--> C --enemy--> D, A --located_in--> City
+func setupGraphTestData(t *testing.T, repo *Repository) {
+	t.Helper()
+	ctx := context.Background()
+	relationships := []*entities.Relationship{
+		{ID: "rel-ab", SourceFactID: "A", TargetFactID: "B", Type: entities.RelationAlly, Bidirectional: true, CreatedAt: time.Now()},
+		{ID: "rel-bc", SourceFactID: "B", TargetFactID: "C", Type: entities.RelationSibling, Bidirectional: true, CreatedAt: time.Now()},
+		{ID: "rel-cd", SourceFactID: "C", TargetFactID: "D", Type: entities.RelationEnemy, Bidirectional: false, CreatedAt: time.Now()},
+		{ID: "rel-a-city", SourceFactID: "A", TargetFactID: "City", Type: entities.RelationLocatedIn, Bidirectional: false, CreatedAt: time.Now()},
+	}
+	for _, rel := range relationships {
+		require.NoError(t, repo.SaveRelationship(ctx, rel))
+	}
+}
+
+func TestRepository_FindRelatedFacts(t *testing.T) {
+	repo := setupTestRepo(t)
+	ctx := context.Background()
+	setupGraphTestData(t, repo)
+
+	t.Run("depth 0 returns empty", func(t *testing.T) {
+		facts, err := repo.FindRelatedFacts(ctx, "A", 0)
+		require.NoError(t, err)
+		assert.Empty(t, facts)
+	})
+
+	t.Run("depth 1 returns direct connections", func(t *testing.T) {
+		facts, err := repo.FindRelatedFacts(ctx, "A", 1)
+		require.NoError(t, err)
+		assert.Len(t, facts, 2)
+		assert.Contains(t, facts, "B")
+		assert.Contains(t, facts, "City")
+	})
+
+	t.Run("depth 2 includes 2-hop connections", func(t *testing.T) {
+		facts, err := repo.FindRelatedFacts(ctx, "A", 2)
+		require.NoError(t, err)
+		assert.Len(t, facts, 3)
+		assert.Contains(t, facts, "C")
+	})
+
+	t.Run("depth 3 reaches D", func(t *testing.T) {
+		facts, err := repo.FindRelatedFacts(ctx, "A", 3)
+		require.NoError(t, err)
+		assert.Len(t, facts, 4)
+		assert.Contains(t, facts, "D")
+	})
+
+	t.Run("respects non-bidirectional direction", func(t *testing.T) {
+		facts, err := repo.FindRelatedFacts(ctx, "D", 1)
+		require.NoError(t, err)
+		assert.Empty(t, facts)
+	})
+
+	t.Run("bidirectional traversal from target", func(t *testing.T) {
+		facts, err := repo.FindRelatedFacts(ctx, "C", 1)
+		require.NoError(t, err)
+		assert.Len(t, facts, 2)
+		assert.Contains(t, facts, "B")
+		assert.Contains(t, facts, "D")
+	})
+
+	t.Run("no relationships returns empty", func(t *testing.T) {
+		facts, err := repo.FindRelatedFacts(ctx, "isolated", 5)
+		require.NoError(t, err)
+		assert.Empty(t, facts)
+	})
+
+	t.Run("excludes self from results", func(t *testing.T) {
+		facts, err := repo.FindRelatedFacts(ctx, "A", 10)
+		require.NoError(t, err)
+		assert.NotContains(t, facts, "A")
+	})
+}
+
+func TestRepository_CountRelationships(t *testing.T) {
+	repo := setupTestRepo(t)
+	ctx := context.Background()
+
+	t.Run("empty database", func(t *testing.T) {
+		count, err := repo.CountRelationships(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, 0, count)
+	})
+
+	t.Run("with relationships", func(t *testing.T) {
+		relationships := []*entities.Relationship{
+			{
+				ID:            "count-1",
+				SourceFactID:  "x",
+				TargetFactID:  "y",
+				Type:          entities.RelationAlly,
+				Bidirectional: false,
+				CreatedAt:     time.Now(),
+			},
+			{
+				ID:            "count-2",
+				SourceFactID:  "y",
+				TargetFactID:  "z",
+				Type:          entities.RelationEnemy,
+				Bidirectional: true,
+				CreatedAt:     time.Now(),
+			},
+		}
+
+		for _, rel := range relationships {
+			require.NoError(t, repo.SaveRelationship(ctx, rel))
+		}
+
+		count, err := repo.CountRelationships(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, 2, count)
+	})
+
+	t.Run("after delete", func(t *testing.T) {
+		err := repo.DeleteRelationship(ctx, "count-1")
+		require.NoError(t, err)
+
+		count, err := repo.CountRelationships(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, 1, count)
+	})
+}
+
 func TestRepository_FactVersions(t *testing.T) {
 	repo := setupTestRepo(t)
 	ctx := context.Background()
